@@ -4,10 +4,37 @@
     "paymentServiceFailure": {
       "state": "ENABLED",
       "defaultVariant": "off",
-      "variants": {
-        "off": false,
-        "on": true
-      }
+      "variants": { "off": false, "on": true }
+    },
+    "cartServiceFailure": {
+      "state": "ENABLED",
+      "defaultVariant": "off",
+      "variants": { "off": false, "on": true }
+    },
+    "productCatalogFailure": {
+      "state": "ENABLED",
+      "defaultVariant": "off",
+      "variants": { "off": false, "on": true }
+    },
+    "recommendationServiceCacheFailure": {
+      "state": "ENABLED",
+      "defaultVariant": "off",
+      "variants": { "off": false, "on": true }
+    },
+    "adServiceFailure": {
+      "state": "ENABLED",
+      "defaultVariant": "off",
+      "variants": { "off": false, "on": true }
+    },
+    "shippingServiceFailure": {
+      "state": "ENABLED",
+      "defaultVariant": "off",
+      "variants": { "off": false, "on": true }
+    },
+    "loadgeneratorFloodHomepage": {
+      "state": "ENABLED",
+      "defaultVariant": "off",
+      "variants": { "off": false, "on": true }
     }
   }
 }

@@ -154,19 +154,26 @@ Stage 5 ⏳  Evaluation & Dashboard    — Benchmark 30 scenarios + web UI showi
 ### Prerequisites
 - Docker & Docker Compose
 - Python 3.11+
+- [`uv`](https://docs.astral.sh/uv/) — fast Python package manager
 - A Gemini API key (free tier works)
 
-### 1. Clone & Install
+### 1. Install uv (if not already installed)
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 2. Clone & Install
 
 ```bash
 cd final_year_project
 cp .env.example .env          # Add your GEMINI_API_KEY here
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+uv sync                        # Creates .venv and installs all dependencies
 ```
 
-### 2. Start the Stack
+All scripts are run with `uv run python ...` — no need to activate the venv manually.
+
+### 3. Start the Stack
 
 ```bash
 docker compose up -d
@@ -175,7 +182,7 @@ docker compose up -d
 Wait ~30 seconds, then verify everything is up:
 
 ```bash
-python scripts/check_stack.py
+uv run python scripts/check_stack.py
 ```
 
 You should see all services marked **HEALTHY**. You can view:
@@ -183,49 +190,70 @@ You should see all services marked **HEALTHY**. You can view:
 - **Prometheus** (metrics): http://localhost:9090
 - **Demo Shop** (app): http://localhost:8080
 
-### 3. Run a Normal Pipeline (Build Success Baselines)
+### 4. Run a Normal Pipeline (Build Success Baselines)
 
 Run this **3 times** to capture baseline telemetry from healthy runs:
 
 ```bash
-python scripts/run_pipeline.py --scenario normal
-python scripts/collect_telemetry.py --meta-file data/runs/success/<run_id>_meta.json
+uv run python scripts/run_pipeline.py --scenario normal
+uv run python scripts/collect_telemetry.py --meta-file data/runs/success/<run_id>_meta.json
 ```
 
 This saves logs, metrics, and traces from a healthy checkout journey. ObservaSage uses these as the "normal" reference to compare against failures.
 
-### 4. Inject a Fault
-
-Pick one of the 5 edge cases to simulate:
+### 5. See All Available Fault Scenarios
 
 ```bash
-# EC-1: OOM Kill (restricts cartservice memory to 25MB → will be killed)
-python scripts/inject_fault.py --fault oom --service cartservice
-
-# EC-3: Cascade Crash (kills paymentservice → checkout fails downstream)
-python scripts/inject_fault.py --fault crash --service paymentservice
+uv run python scripts/inject_fault.py --list
 ```
 
-### 5. Trigger the Failure
+This prints all **28 fault scenarios** across the 5 edge case categories:
+
+| Category | Scenarios |
+|----------|-----------|
+| **EC-1 OOM / Resource** | `oom_cart`, `oom_checkout`, `oom_payment`, `oom_currency`, `cpu_throttle_cart`, `cpu_throttle_checkout` |
+| **EC-2 Flaky Latency** | `latency_payment`, `latency_cart`, `latency_currency`, `packet_loss_payment`, `flag_load_spike` |
+| **EC-3 Cascade Crash** | `crash_payment`, `crash_currency`, `crash_redis`, `crash_shipping`, `crash_email`, `crash_checkout`, `crash_productcatalog`, `cascade_payment_currency`, `flag_payment_failure`, `flag_shipping_failure`, `restart_loop_checkout` |
+| **EC-4 Silent Corruption** | `redis_flush`, `redis_corrupt_cart`, `flag_cart_failure`, `flag_product_failure` |
+| **EC-5 Infra Drift** | `net_partition_cart`, `net_partition_payment` |
+| **Restore** | `clear` |
+
+### 6. Inject a Fault
 
 ```bash
-python scripts/run_pipeline.py --scenario oom_failure
+# EC-1: OOM — restrict cartservice to 25MB RAM → Linux kills it (exit 137)
+uv run python scripts/inject_fault.py --scenario oom_cart
+
+# EC-3: Cascade — stop paymentservice → checkout fails via cascade
+uv run python scripts/inject_fault.py --scenario crash_payment
+
+# EC-4: Silent Corruption — flush all Redis cart data → exit 0 but empty order
+uv run python scripts/inject_fault.py --scenario redis_flush
+
+# EC-3: Application-level — enable payment failure feature flag
+uv run python scripts/inject_fault.py --scenario flag_payment_failure
+```
+
+### 7. Trigger the Failure
+
+```bash
+uv run python scripts/run_pipeline.py --scenario oom_cart
 ```
 
 The pipeline will fail. A `data/runs/failed/<run_id>_meta.json` file is saved.
 
-### 6. Collect Failure Telemetry
+### 8. Collect Failure Telemetry
 
 ```bash
-python scripts/collect_telemetry.py --meta-file data/runs/failed/<run_id>_meta.json
+uv run python scripts/collect_telemetry.py --meta-file data/runs/failed/<run_id>_meta.json
 ```
 
-This saves `<run_id>_telemetry.json` with all 3 signals from the failure window.
+This saves `<run_id>_telemetry.json` with all 3 signals (logs + metrics + traces) from the failure window.
 
-### 7. Restore the Stack
+### 9. Restore the Stack
 
 ```bash
-python scripts/inject_fault.py --fault clear
+uv run python scripts/inject_fault.py --scenario clear
 ```
 
 ---
@@ -236,7 +264,7 @@ python scripts/inject_fault.py --fault clear
 final_year_project/
 │
 ├── docker-compose.yml              # Full stack: microservices + Prometheus + Jaeger + OTel
-├── requirements.txt                # Python dependencies
+├── pyproject.toml                  # Python project & dependencies (managed by uv)
 ├── .env.example                    # Template for GEMINI_API_KEY and URLs
 │
 ├── config/                         # Config files for Prometheus, OTel Collector, feature flags

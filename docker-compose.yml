@@ -1,0 +1,225 @@
+services:
+  # -------------------------------------------------------------
+  # Observability Backends
+  # -------------------------------------------------------------
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger Web UI
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    networks:
+      - observasage-net
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090" # Prometheus Web & PromQL API
+    networks:
+      - observasage-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.98.0
+    container_name: otel-collector
+    volumes:
+      - ./config/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    ports:
+      - "8889:8889" # Prometheus metrics scraped by Prometheus
+    depends_on:
+      - jaeger
+    networks:
+      - observasage-net
+
+  flagd:
+    image: ghcr.io/open-feature/flagd:v0.16.0
+    container_name: flagd
+    volumes:
+      - ./config/demo.flagd.json:/etc/flagd/demo.flagd.json:ro
+    command:
+      - start
+      - --uri
+      - file:/etc/flagd/demo.flagd.json
+    ports:
+      - "8013:8013"
+    networks:
+      - observasage-net
+
+  # -------------------------------------------------------------
+  # Microservices Core Checkout Journey (OpenTelemetry Demo)
+  # -------------------------------------------------------------
+  redis-cart:
+    image: redis:7.2-alpine
+    container_name: redis-cart
+    ports:
+      - "16379:6379"
+    networks:
+      - observasage-net
+
+  cartservice:
+    image: otel/demo:1.9.0-cartservice
+    container_name: cartservice
+    environment:
+      - REDIS_ADDR=redis-cart:6379
+      - CART_PORT=7070
+      - ASPNETCORE_HTTP_PORTS=7070
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    depends_on:
+      - redis-cart
+      - jaeger
+    ports:
+      - "7070:7070"
+    networks:
+      - observasage-net
+
+  productcatalogservice:
+    image: otel/demo:1.9.0-productcatalogservice
+    container_name: productcatalogservice
+    environment:
+      - PRODUCT_CATALOG_SERVICE_PORT=3550
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    depends_on:
+      - jaeger
+    ports:
+      - "3550:3550"
+    networks:
+      - observasage-net
+
+  quoteservice:
+    image: otel/demo:1.9.0-quoteservice
+    container_name: quoteservice
+    environment:
+      - QUOTE_SERVICE_PORT=8090
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      - jaeger
+    ports:
+      - "8090:8090"
+    networks:
+      - observasage-net
+
+  shippingservice:
+    image: otel/demo:1.9.0-shippingservice
+    container_name: shippingservice
+    environment:
+      - SHIPPING_SERVICE_PORT=50050
+      - QUOTE_ADDR=http://quoteservice:8090
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    depends_on:
+      - quoteservice
+      - jaeger
+    ports:
+      - "50050:50050"
+    networks:
+      - observasage-net
+
+  emailservice:
+    image: otel/demo:1.9.0-emailservice
+    container_name: emailservice
+    environment:
+      - EMAIL_PORT=6060
+      - PORT=6060
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+    depends_on:
+      - jaeger
+    ports:
+      - "6060:6060"
+    networks:
+      - observasage-net
+
+  currencyservice:
+    image: otel/demo:1.9.0-currencyservice
+    container_name: currencyservice
+    environment:
+      - CURRENCY_SERVICE_PORT=7001
+      - VERSION=1.9.0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    depends_on:
+      - jaeger
+    ports:
+      - "7001:7001"
+    networks:
+      - observasage-net
+
+  paymentservice:
+    image: otel/demo:1.9.0-paymentservice
+    container_name: paymentservice
+    environment:
+      - PAYMENT_SERVICE_PORT=50051
+      - FLAGD_HOST=flagd
+      - FLAGD_PORT=8013
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+    depends_on:
+      - flagd
+      - jaeger
+    ports:
+      - "50051:50051"
+    networks:
+      - observasage-net
+
+  checkoutservice:
+    image: otel/demo:1.9.0-checkoutservice
+    container_name: checkoutservice
+    environment:
+      - CHECKOUT_SERVICE_PORT=5050
+      - CART_SERVICE_ADDR=cartservice:7070
+      - CURRENCY_SERVICE_ADDR=currencyservice:7001
+      - PAYMENT_SERVICE_ADDR=paymentservice:50051
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - SHIPPING_SERVICE_ADDR=shippingservice:50050
+      - EMAIL_SERVICE_ADDR=emailservice:6060
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+    depends_on:
+      - cartservice
+      - currencyservice
+      - paymentservice
+      - productcatalogservice
+      - shippingservice
+      - emailservice
+      - jaeger
+    ports:
+      - "5050:5050"
+    networks:
+      - observasage-net
+
+  frontend:
+    image: otel/demo:1.9.0-frontend
+    container_name: frontend
+    environment:
+      - PORT=8080
+      - FRONTEND_PORT=8080
+      - CART_SERVICE_ADDR=cartservice:7070
+      - CHECKOUT_SERVICE_ADDR=checkoutservice:5050
+      - CURRENCY_SERVICE_ADDR=currencyservice:7001
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - SHIPPING_SERVICE_ADDR=shippingservice:50050
+      - RECOMMENDATION_SERVICE_ADDR=127.0.0.1:9001
+      - AD_SERVICE_ADDR=127.0.0.1:9555
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+    depends_on:
+      - checkoutservice
+      - cartservice
+      - currencyservice
+      - productcatalogservice
+      - shippingservice
+      - jaeger
+    ports:
+      - "8080:8080" # Frontend Web UI & API
+    networks:
+      - observasage-net
+
+networks:
+  observasage-net:
+    driver: bridge

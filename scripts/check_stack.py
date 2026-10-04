@@ -16,10 +16,12 @@ console = Console()
 SERVICES_TO_CHECK = [
     ("Prometheus API", "http://localhost:9090/-/ready", 200),
     ("Jaeger Tracing UI", "http://localhost:16686", 200),
+    ("cAdvisor Metrics", "http://localhost:8081/metrics", 200),
     ("Frontend UI / API", "http://localhost:8080", [200, 301, 302, 404]),
 ]
 
 EXPECTED_CONTAINERS = [
+    "cadvisor",
     "prometheus",
     "jaeger",
     "otel-collector",

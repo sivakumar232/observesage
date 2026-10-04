@@ -28,8 +28,21 @@ MONITORED_SERVICES = [
     "paymentservice",
     "currencyservice",
     "checkoutservice",
-    "frontend"
+    "frontend",
+    "productcatalogservice",
+    "shippingservice",
+    "emailservice",
+    "quoteservice",
 ]
+
+# OTel demo containers register in Jaeger as 'unknown_service:<name>' or just '<name>'.
+# We query both variants to be resilient to different SDK configurations.
+def _jaeger_service_variants(container_name: str) -> list[str]:
+    return [
+        container_name,
+        f"unknown_service:{container_name}",
+        f"unknown_service:node",  # JS services (frontend, emailservice) show as this
+    ]
 
 def collect_logs(client, services, start_time: datetime.datetime, end_time: datetime.datetime):
     logs_by_service = {}
@@ -47,14 +60,42 @@ def collect_logs(client, services, start_time: datetime.datetime, end_time: date
 
 def collect_metrics(services, start_time: datetime.datetime, end_time: datetime.datetime):
     metrics_results = []
-    # Query Prometheus range API
-    t_start_iso = (start_time - datetime.timedelta(seconds=30)).isoformat()
-    t_end_iso = (end_time + datetime.timedelta(seconds=10)).isoformat()
+    # Widen the window slightly so short runs still have data
+    t_start_iso = (start_time - datetime.timedelta(seconds=60)).isoformat()
+    t_end_iso = (end_time + datetime.timedelta(seconds=30)).isoformat()
 
+    # cAdvisor metric names — container_label_com_docker_compose_service filters by service name
     prom_queries = [
-        ("cpu_usage", "sum(rate(container_cpu_usage_seconds_total[15s])) by (name)"),
-        ("memory_rss", "sum(container_memory_rss) by (name)"),
-        ("memory_limit", "sum(container_spec_memory_limit_bytes) by (name)"),
+        (
+            "cpu_usage_rate",
+            'sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service!=""}[30s])) '
+            'by (container_label_com_docker_compose_service)',
+        ),
+        (
+            "memory_rss",
+            'sum(container_memory_rss{container_label_com_docker_compose_service!=""}) '
+            'by (container_label_com_docker_compose_service)',
+        ),
+        (
+            "memory_usage",
+            'sum(container_memory_usage_bytes{container_label_com_docker_compose_service!=""}) '
+            'by (container_label_com_docker_compose_service)',
+        ),
+        (
+            "memory_limit",
+            'sum(container_spec_memory_limit_bytes{container_label_com_docker_compose_service!=""}) '
+            'by (container_label_com_docker_compose_service)',
+        ),
+        (
+            "network_rx_bytes",
+            'sum(rate(container_network_receive_bytes_total{container_label_com_docker_compose_service!=""}[30s])) '
+            'by (container_label_com_docker_compose_service)',
+        ),
+        (
+            "network_tx_bytes",
+            'sum(rate(container_network_transmit_bytes_total{container_label_com_docker_compose_service!=""}[30s])) '
+            'by (container_label_com_docker_compose_service)',
+        ),
     ]
 
     for metric_name, query in prom_queries:
@@ -62,32 +103,71 @@ def collect_metrics(services, start_time: datetime.datetime, end_time: datetime.
             resp = requests.get(
                 f"{PROMETHEUS_URL}/api/v1/query_range",
                 params={"query": query, "start": t_start_iso, "end": t_end_iso, "step": "5s"},
-                timeout=3.0
+                timeout=5.0
             )
             if resp.status_code == 200:
                 data = resp.json().get("data", {}).get("result", [])
                 metrics_results.append({"metric_name": metric_name, "query": query, "data": data})
+            else:
+                metrics_results.append({"metric_name": metric_name, "query": query,
+                                        "error": f"HTTP {resp.status_code}", "data": []})
         except Exception as e:
-            metrics_results.append({"metric_name": metric_name, "error": str(e)})
+            metrics_results.append({"metric_name": metric_name, "query": query,
+                                    "error": str(e), "data": []})
 
     return metrics_results
 
 def collect_traces(services, start_time: datetime.datetime, end_time: datetime.datetime):
+    """Query Jaeger for traces. Jaeger indexes by OTel service.name (not container name).
+    We try both the container name and common OTel demo service name patterns."""
     traces_results = []
-    start_us = int((start_time - datetime.timedelta(seconds=10)).timestamp() * 1_000_000)
-    end_us = int((end_time + datetime.timedelta(seconds=10)).timestamp() * 1_000_000)
+    # Widen window: runs can be very short
+    start_us = int((start_time - datetime.timedelta(seconds=30)).timestamp() * 1_000_000)
+    end_us = int((end_time + datetime.timedelta(seconds=30)).timestamp() * 1_000_000)
 
+    # First, discover what service names are actually registered in Jaeger
+    try:
+        svc_resp = requests.get(f"{JAEGER_URL}/api/services", timeout=5.0)
+        jaeger_services = svc_resp.json().get("data", []) if svc_resp.status_code == 200 else []
+    except Exception:
+        jaeger_services = []
+
+    # Build query targets: match container names against registered Jaeger service names
+    query_targets = set()
     for svc in services:
+        for variant in _jaeger_service_variants(svc):
+            if variant in jaeger_services:
+                query_targets.add(variant)
+    # Also query unknown_service:node once (covers JS/Node services)
+    if "unknown_service:node" in jaeger_services:
+        query_targets.add("unknown_service:node")
+    # Fallback: query all registered services if no matches found
+    if not query_targets:
+        query_targets = set(jaeger_services)
+
+    seen_trace_ids = set()
+    for svc in query_targets:
         try:
             resp = requests.get(
                 f"{JAEGER_URL}/api/traces",
-                params={"service": svc, "start": start_us, "end": end_us, "limit": 10},
-                timeout=3.0
+                params={
+                    "service": svc,
+                    "start": start_us,
+                    "end": end_us,
+                    "limit": 50,
+                    "lookback": "custom",
+                },
+                timeout=5.0
             )
             if resp.status_code == 200:
                 traces = resp.json().get("data", [])
-                if traces:
-                    traces_results.extend(traces)
+                for trace in traces:
+                    tid = trace.get("traceID", "")
+                    if tid not in seen_trace_ids:
+                        seen_trace_ids.add(tid)
+                        traces_results.append(trace)
+            elif resp.status_code != 404:
+                console.print(f"[dim]Jaeger returned {resp.status_code} for {svc}[/dim]")
         except Exception as e:
             console.print(f"[dim]Jaeger collection error for {svc}: {e}[/dim]")
 

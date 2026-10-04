@@ -7,6 +7,17 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
+  # Container-level CPU, memory, network, disk I/O metrics
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      # Keep only metrics for our named containers (drop system noise)
+      - source_labels: [container_label_com_docker_compose_service]
+        regex: ".+"
+        action: keep
+
+  # Application-level OTLP metrics forwarded by the OTel collector
   - job_name: "otel-collector"
     static_configs:
       - targets: ["otel-collector:8889"]

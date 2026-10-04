@@ -1,0 +1,19 @@
+{
+  "total_templates": 14,
+  "templates": [
+    "<<TIMESTAMP>>Z <*> called with userId test user <*>",
+    "<<TIMESTAMP>>Z <<NUM>> <<NUM>> <<NUM>> INFO <*> <*> <*>",
+    "<<TIMESTAMP>>Z <<NUM>> <<NUM>> <<NUM>> INFO Tracking ID Created <<UUID>>",
+    "<<TIMESTAMP>>Z <<NUM>>/<<NUM>>/<<NUM>> <<NUM>> <<NUM>> <<NUM>> openfeature PROVIDER NOT READY connection not made",
+    "<<TIMESTAMP>>Z <<TIMESTAMP>>+<<NUM>> <<NUM>> \"POST /getquote HTTP/<<NUM>>.<<NUM>>\" <<NUM>> <<NUM>>",
+    "<<TIMESTAMP>>Z AddItemAsync called with userId test user <*> productId OLJCESPC7Z quantity <<NUM>>",
+    "<<TIMESTAMP>>Z Error File /opentelemetry-cpp/exporters/otlp/src/otlp grpc log record exporter.cc <<NUM>> OTLP LOG GRPC Exporter Export() failed unknown service opentelemetry.proto.collector.logs.v1.LogsService",
+    "<<TIMESTAMP>>Z GetCartAsync called with userId <<UUID>>",
+    "<<TIMESTAMP>>Z info cartservice.cartstore.RedisCartStore <<NUM>>",
+    "<<TIMESTAMP>>Z {\"level\" <<NUM>> \"time\" <<NUM>> \"pid\" <<NUM>> \"hostname\" <*> \"trace id\" <*> \"span id\" <*> \"trace flags\" \"<<NUM>>\" \"request\" {\"amount\" {\"currencyCode\" \"USD\" \"units\" {\"low\" <<NUM>> \"high\" <<NUM>> \"unsigned\" false} \"nanos\" <<NUM>>} \"creditCard\" {\"creditCardNumber\" \"<<NUM>>\" \"creditCardCvv\" <<NUM>> \"creditCardExpirationYear\" <<NUM>> \"creditCardExpirationMonth\" <<NUM>>}} \"msg\" \"Charge request received.\"}",
+    "<<TIMESTAMP>>Z {\"level\" <<NUM>> \"time\" <<NUM>> \"pid\" <<NUM>> \"hostname\" <*> \"trace id\" <*> \"span id\" <*> \"trace flags\" \"<<NUM>>\" \"transactionId\" \"<<UUID>>\" \"cardType\" \"visa\" \"lastFourDigits\" \"<<NUM>>\" \"amount\" {\"units\" {\"low\" <<NUM>> \"high\" <<NUM>> \"unsigned\" false} \"nanos\" <<NUM>> \"currencyCode\" \"USD\"} \"msg\" \"Transaction complete.\"}",
+    "<<TIMESTAMP>>Z {\"message\" \" PlaceOrder user id \\\"test user <*> user currency \\\"USD\\\"\" \"severity\" \"info\" \"timestamp\" \"<<TIMESTAMP>>Z\"}",
+    "<<TIMESTAMP>>Z {\"message\" \"failed to send order confirmation to \\\"test user <*> failed POST to email service Post \\\"emailservice <<NUM>>/send order confirmation\\\" unsupported protocol scheme \\\"emailservice\\\"\" \"severity\" \"warning\" \"timestamp\" \"<<TIMESTAMP>>Z\"}",
+    "<<TIMESTAMP>>Z {\"message\" \"payment went through (transaction id <<UUID>>)\" \"severity\" \"info\" \"timestamp\" \"<<TIMESTAMP>>Z\"}"
+  ]
+}

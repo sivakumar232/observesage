@@ -117,9 +117,23 @@ def compute_median_and_mad(values: List[float]) -> Tuple[float, float]:
     return med, mad
 
 
+def compute_adaptive_threshold(b_mean: float, b_std: float, default_threshold: float = 3.0) -> float:
+    """
+    Dynamically computes an adaptive anomaly threshold based on the baseline coefficient of variation (CV).
+    For high-noise metrics (high CV), scales up the threshold to minimize false positives.
+    For low-noise metrics (low CV), retains high sensitivity.
+    """
+    if b_mean == 0.0 or b_std == 0.0:
+        return default_threshold
+    cv = abs(b_std / b_mean)
+    # Smooth adaptive scaling factor between 0.9x and 1.5x
+    scaling = 1.0 + 0.25 * min(2.0, cv)
+    return max(2.5, min(5.0, default_threshold * scaling))
+
+
 class MetricsProcessor:
     """
-    Analyzes metrics timeseries using dynamic Z-score filtering, non-parametric MAD scoring,
+    Analyzes metrics timeseries using dynamic adaptive thresholding, non-parametric MAD scoring,
     cgroup memory limit correlation, and TimeToOOM slope estimation.
     """
 
@@ -233,30 +247,35 @@ class MetricsProcessor:
                         is_oom_risk = True
                         has_oom_alert = True
 
-                # Fallback to slope threshold and elevated z-score
-                if not is_oom_risk and slope > self.oom_slope_threshold_bytes_per_sec and z_score > 1.5:
+                # Dynamic slope threshold scaled with baseline usage
+                dynamic_slope_threshold = max(
+                    10000.0,
+                    min(self.oom_slope_threshold_bytes_per_sec, abs(b_mean) * 0.05) if b_mean > 0 else self.oom_slope_threshold_bytes_per_sec,
+                )
+                if not is_oom_risk and slope > dynamic_slope_threshold and (z_score > 1.5 or robust_z > 1.5):
                     is_oom_risk = True
                     has_oom_alert = True
 
+            adaptive_tau = compute_adaptive_threshold(b_mean, b_std, default_threshold=self.z_threshold)
             effective_divergence = max(abs_z, abs_robust_z)
-            is_threshold_exceeded = effective_divergence >= self.z_threshold or is_oom_risk
+            is_threshold_exceeded = effective_divergence >= adaptive_tau or is_oom_risk
 
             if is_threshold_exceeded:
-                # Determine severity
-                if is_oom_risk or effective_divergence >= 8.0:
+                # Determine severity dynamically
+                if is_oom_risk or effective_divergence >= (adaptive_tau * 2.5):
                     sev = "CRITICAL"
-                elif effective_divergence >= 5.0:
+                elif effective_divergence >= (adaptive_tau * 1.6):
                     sev = "HIGH"
-                elif effective_divergence >= 3.0:
+                elif effective_divergence >= adaptive_tau:
                     sev = "MEDIUM"
                 else:
                     sev = "LOW"
 
-                if is_latency and (z_score > self.z_threshold or robust_z > self.z_threshold):
+                if is_latency and (z_score > adaptive_tau or robust_z > adaptive_tau):
                     has_latency_anomaly = True
 
                 desc_parts = [
-                    f"Spike to {peak_val:.2f} (baseline μ={b_mean:.2f}, σ={b_std:.2f}, z={z_score:+.2f}, robust_z={robust_z:+.2f})"
+                    f"Spike to {peak_val:.2f} (baseline μ={b_mean:.2f}, σ={b_std:.2f}, z={z_score:+.2f}, robust_z={robust_z:+.2f}, τ={adaptive_tau:.2f})"
                 ]
                 if is_oom_risk:
                     oom_desc = f"Steep memory slope +{slope/1e6:.2f}MB/s indicates OOM risk"
@@ -274,6 +293,7 @@ class MetricsProcessor:
                     baseline_std=b_std,
                     z_score=z_score,
                     robust_z_score=robust_z,
+                    adaptive_threshold=adaptive_tau,
                     is_threshold_exceeded=True,
                     is_oom_risk=is_oom_risk,
                     slope_dM_dt=slope,

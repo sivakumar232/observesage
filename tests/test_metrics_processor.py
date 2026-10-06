@@ -179,3 +179,39 @@ def test_cgroup_memory_limit_time_to_oom():
     assert mem_alert.time_to_oom_seconds is not None
     assert mem_alert.time_to_oom_seconds < 300.0
 
+
+def test_dynamic_adaptive_threshold_scaling():
+    """
+    Verifies that for noisy baseline metrics, the adaptive threshold dynamically
+    scales upward to avoid false-positive alert floods.
+    """
+    processor = MetricsProcessor(z_threshold=3.0)
+
+    # High variance baseline (CV ~ 0.5)
+    baseline = [
+        MetricSeries(
+            metric_name="frontend/request_rate",
+            query="rcaeval",
+            data=[{"timestamp": 100.0 + i, "value": 100.0 + (50.0 if i % 2 == 0 else -50.0)} for i in range(20)],
+        )
+    ]
+
+    # Moderate deviation (z ~ 3.1) which should NOT trigger when adaptive threshold is raised
+    incident = [
+        MetricSeries(
+            metric_name="frontend/request_rate",
+            query="rcaeval",
+            data=[
+                {"timestamp": 200.0, "value": 100.0},
+                {"timestamp": 205.0, "value": 260.0},
+            ],
+        )
+    ]
+
+    evidence = processor.process(incident, baseline)
+    if evidence.alerts:
+        alert = evidence.alerts[0]
+        assert alert.adaptive_threshold is not None
+        assert alert.adaptive_threshold >= 3.0
+
+

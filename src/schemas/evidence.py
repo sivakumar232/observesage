@@ -34,6 +34,7 @@ class MetricAlert(BaseModel):
     baseline_std: float
     z_score: float
     robust_z_score: Optional[float] = Field(default=None, description="Non-parametric MAD-based robust z-score")
+    adaptive_threshold: Optional[float] = Field(default=None, description="Dynamically calibrated baseline anomaly threshold")
     is_threshold_exceeded: bool = False
     is_oom_risk: bool = False
     slope_dM_dt: Optional[float] = Field(default=None, description="Memory consumption rate of change (bytes/sec)")

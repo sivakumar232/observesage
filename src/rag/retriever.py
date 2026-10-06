@@ -34,6 +34,7 @@ class RetrievedRAGContext:
     log_evidences: Dict[str, LogEvidence]
     metric_evidence: Optional[MetricEvidence]
     trace_evidence: Optional[TraceEvidence]
+    confidence: float = 0.70
 
 
 class TelemetryRAGRetriever:
@@ -91,7 +92,7 @@ class TelemetryRAGRetriever:
             )
 
         # 4. Multi-Signal Evidence Triangulation & Candidate Scoring
-        ranked_candidates, failure_cat, triangulation, _ = self.fusion_engine.correlate(
+        ranked_candidates, failure_cat, triangulation, initial_conf = self.fusion_engine.correlate(
             log_evidences=log_evidences,
             metric_evidence=metric_evidence,
             trace_evidence=trace_evidence,
@@ -121,4 +122,5 @@ class TelemetryRAGRetriever:
             log_evidences=log_evidences,
             metric_evidence=metric_evidence,
             trace_evidence=trace_evidence,
+            confidence=initial_conf,
         )

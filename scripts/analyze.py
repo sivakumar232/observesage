@@ -137,15 +137,22 @@ def main():
 
     # Step 2: Generative LLM Diagnosis
     client = GeminiRCAClient()
+    report = None
     if client.is_configured:
         console.print("[dim]2. Sending grounded Telemetry-RAG prompt to Gemini 1.5 Pro...[/dim]")
-        report = client.diagnose(
-            run_id=snapshot.run_id,
-            scenario=rag_ctx.scenario,
-            rag_prompt=rag_ctx.rag_prompt,
-        )
-    else:
-        console.print("[yellow]Notice: GEMINI_API_KEY not configured. Generating report directly from Telemetry-RAG retrieved consensus.[/yellow]")
+        try:
+            report = client.diagnose(
+                run_id=snapshot.run_id,
+                scenario=rag_ctx.scenario,
+                rag_prompt=rag_ctx.rag_prompt,
+            )
+        except Exception as e:
+            console.print(f"[yellow]Warning: Gemini API call failed ({e}). Falling back to Telemetry-RAG consensus.[/yellow]")
+            report = None
+
+    if report is None:
+        if not client.is_configured:
+            console.print("[yellow]Notice: GEMINI_API_KEY not configured. Generating report directly from Telemetry-RAG retrieved consensus.[/yellow]")
         top_svc = rag_ctx.candidate_services[0] if rag_ctx.candidate_services else "unknown"
         report = RCAReport(
             run_id=snapshot.run_id,
@@ -153,7 +160,7 @@ def main():
             root_cause_service=top_svc,
             culprit_services=rag_ctx.candidate_services[:3] if rag_ctx.candidate_services else [top_svc],
             failure_category=rag_ctx.hypothesized_category,
-            confidence_score=0.92,
+            confidence_score=rag_ctx.confidence,
             root_cause_summary=f"Telemetry-RAG localized root cause to '{top_svc}' failing under {rag_ctx.hypothesized_category.value}.",
             evidence_triangulation=rag_ctx.triangulation,
             remediation_steps=[

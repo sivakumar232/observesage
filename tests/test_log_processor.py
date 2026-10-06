@@ -115,3 +115,35 @@ def test_probe_filtering_in_asymmetric_context():
     assert any("Calling database pool" in l for l in ctx_before)
     assert any("Stack trace" in l for l in ctx_after)
 
+
+def test_dynamic_stack_trace_continuation_expansion():
+    """
+    Verifies that when an exception stack trace extends beyond n=3 lines,
+    the dynamic expansion continues until the stack trace naturally terminates.
+    """
+    logs = [
+        "2026-10-06 10:00:00 normal line",
+        "2026-10-06 10:00:01 ERROR: NullPointerException in PaymentGateway",
+        "  at com.example.Payment.process(Payment.java:45)",
+        "  at com.example.Payment.authorize(Payment.java:80)",
+        "  at com.example.Checkout.charge(Checkout.java:112)",
+        "  at com.example.Checkout.execute(Checkout.java:23)",
+        "  Caused by: java.net.SocketException: Connection reset",
+        "  at java.net.SocketInputStream.read(SocketInputStream.java:150)",
+        "2026-10-06 10:00:02 Next unrelated request processed",
+    ]
+    target_idx = 1  # The error line
+
+    # n=2 baseline, but dynamic_stack_trace=True should capture all 6 stack trace lines
+    _, _, ctx_after = expand_asymmetric_context(
+        logs, target_idx, m=1, n=2, dynamic_stack_trace=True
+    )
+
+    # Should dynamically capture beyond n=2 to encompass the full stack trace
+    assert len(ctx_after) >= 6
+    assert any("Caused by:" in l for l in ctx_after)
+    assert any("SocketInputStream" in l for l in ctx_after)
+    # But stops at the next unrelated log line
+    assert "2026-10-06 10:00:02 Next unrelated request processed" not in ctx_after
+
+

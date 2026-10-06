@@ -70,19 +70,19 @@ def build_multimodal_prompt(
     max_total_tokens: int = 2400,
 ) -> str:
     """
-    Constructs a budgeted, blind prompt for LLM diagnosis.
-    Dynamically balances token budgets proportionally across active telemetry signals
-    and injects observed service call topology for causal reasoning.
+    Constructs an elastic, budgeted prompt for LLM diagnosis.
+    Dynamically pools tokens across active signals based on real information density
+    (unused metric budget rolls over to traces and logs).
+    Injects observed service call topology for causal reasoning.
     """
     sections: List[str] = [f"### Incident Reference ID: {run_id}"]
 
     include_traces = mode in ["logs-traces", "fusion"] and trace_evidence is not None
     include_metrics = mode in ["logs-metrics", "fusion"] and metric_evidence is not None
 
-    # Dynamically compute proportional budgets based on max_total_tokens
-    active_signals = 1 + (1 if include_traces else 0) + (1 if include_metrics else 0)
-    trace_budget = max(400, int(max_total_tokens * 0.35)) if include_traces else 0
-    metric_budget = max(350, int(max_total_tokens * 0.25)) if include_metrics else 0
+    # Base budget envelope calculation
+    fixed_overhead = 120  # headers, instructions
+    elastic_pool = max(400, max_total_tokens - fixed_overhead)
 
     # 1. Traces Section (includes service call topology if available)
     if include_traces and trace_evidence:
@@ -98,13 +98,17 @@ def build_multimodal_prompt(
 
         if trace_parts:
             combined_trace = "\n\n".join(trace_parts)
-            sections.append(truncate_to_tokens(combined_trace, trace_budget))
+            needed_trace_tokens = count_bpe_tokens(combined_trace)
+            dynamic_trace_cap = min(needed_trace_tokens, int(elastic_pool * 0.45))
+            sections.append(truncate_to_tokens(combined_trace, max(350, dynamic_trace_cap)))
 
-    # 2. Metrics Section
+    # 2. Metrics Section (takes actual needed tokens or up to dynamic cap)
     if include_metrics and metric_evidence and metric_evidence.formatted_prompt:
-        sections.append(truncate_to_tokens(metric_evidence.formatted_prompt, metric_budget))
+        needed_metric_tokens = count_bpe_tokens(metric_evidence.formatted_prompt)
+        dynamic_metric_cap = min(needed_metric_tokens, int(elastic_pool * 0.35))
+        sections.append(truncate_to_tokens(metric_evidence.formatted_prompt, max(250, dynamic_metric_cap)))
 
-    # 3. Logs Section (allocated remaining budget)
+    # 3. Logs Section (dynamically absorbs all remaining budget)
     log_blocks: List[str] = []
     if log_evidences:
         for svc, ev in sorted(log_evidences.items(), key=lambda item: len(item[1].snippets), reverse=True):
@@ -113,8 +117,8 @@ def build_multimodal_prompt(
 
     if log_blocks:
         combined_logs = "\n\n".join(log_blocks)
-        current_len = count_bpe_tokens("\n\n".join(sections))
-        remaining_budget = max(200, max_total_tokens - current_len - 100)
+        current_used = count_bpe_tokens("\n\n".join(sections))
+        remaining_budget = max(200, max_total_tokens - current_used - 80)
         budgeted_logs = truncate_to_tokens(combined_logs, remaining_budget)
         sections.append("### Extracted Log Evidence (Drain3 Novel Templates & Asymmetric Context):\n" + budgeted_logs)
 

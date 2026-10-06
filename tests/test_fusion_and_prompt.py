@@ -201,3 +201,67 @@ def test_topological_causal_graph_propagation():
     ranked, _, _, _ = engine.correlate(log_evidences=log_ev, trace_evidence=trace_ev)
     assert ranked[0] == "cartservice"
 
+
+def test_dynamic_bayesian_confidence_and_hypothesis_scoring():
+    """
+    Verifies that multi-signal consensus produces mathematically continuous
+    Bayesian confidence (not static constants), and evaluates competing hypotheses dynamically.
+    """
+    engine = FusionEngine()
+
+    # Weak single-signal evidence
+    log_ev_weak = {
+        "currencyservice": LogEvidence(
+            service="currencyservice",
+            snippets=[LogSnippet(service="currencyservice", line_number=1, target_line="error reading rate")],
+        )
+    }
+    _, cat_weak, _, conf_weak = engine.correlate(log_evidences=log_ev_weak)
+    assert 0.50 <= conf_weak <= 0.75
+
+    # Strong tri-modal corroboration
+    from src.schemas.evidence import MetricAlert
+    metric_ev_strong = MetricEvidence(
+        alerts=[
+            MetricAlert(
+                metric_name="currencyservice/mem",
+                service="currencyservice",
+                current_value=150.0,
+                baseline_mean=50.0,
+                baseline_std=5.0,
+                z_score=20.0,
+                is_oom_risk=True,
+                time_to_oom_seconds=45.0,
+                description="OOM crash",
+            )
+        ],
+        has_oom_alert=True,
+    )
+    trace_ev_strong = TraceEvidence(
+        total_traces=1,
+        total_spans=3,
+        error_spans_count=2,
+        culprit_service="currencyservice",
+        culprit_span=TraceSpanEvidence(
+            trace_id="t1",
+            span_id="s1",
+            service_name="currencyservice",
+            operation_name="/convert",
+            duration_ms=1000.0,
+            depth=2,
+            is_leaf_culprit=True,
+        ),
+    )
+
+    ranked, cat_strong, _, conf_strong = engine.correlate(
+        log_evidences=log_ev_weak,
+        metric_evidence=metric_ev_strong,
+        trace_evidence=trace_ev_strong,
+    )
+
+    # Multi-signal Bayesian agreement should dynamically yield high confidence (> 0.90)
+    assert conf_strong >= 0.90
+    assert cat_strong == FailureCategory.EC_1_OOM
+    assert ranked[0] == "currencyservice"
+
+

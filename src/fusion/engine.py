@@ -114,45 +114,101 @@ class FusionEngine:
         ranked_candidates = sorted(service_scores.keys(), key=lambda s: service_scores[s], reverse=True)
         top_service = ranked_candidates[0] if ranked_candidates else "unknown"
 
-        # Determine Primary Signal & Category
-        primary_signal = "FUSION"
-        failure_cat = FailureCategory.UNKNOWN
+        # 6. Dynamic Multi-Hypothesis Likelihood Formulation
+        likelihoods: Dict[FailureCategory, float] = {
+            FailureCategory.EC_1_OOM: 0.1,
+            FailureCategory.EC_2_LATENCY: 0.1,
+            FailureCategory.EC_3_CASCADE: 0.1,
+            FailureCategory.EC_4_SILENT: 0.05,
+            FailureCategory.EC_5_INFRA: 0.1,
+            FailureCategory.CODE_BUG: 0.1,
+        }
+
+        # Metrics evidence likelihood contribution
+        max_metric_div = 0.0
+        if metric_evidence and metric_evidence.alerts:
+            top_alert = metric_evidence.alerts[0]
+            max_metric_div = max(abs(top_alert.z_score), abs(top_alert.robust_z_score or 0.0))
+            if metric_evidence.has_oom_alert:
+                likelihoods[FailureCategory.EC_1_OOM] += 8.0
+                if any(a.time_to_oom_seconds and a.time_to_oom_seconds < 180.0 for a in metric_evidence.alerts):
+                    likelihoods[FailureCategory.EC_1_OOM] += 4.0
+            if metric_evidence.has_latency_anomaly:
+                likelihoods[FailureCategory.EC_2_LATENCY] += 6.5
+
+        # Trace evidence likelihood contribution
+        leaf_depth = 0
+        if trace_evidence:
+            if trace_evidence.culprit_span:
+                leaf_depth = trace_evidence.culprit_span.depth
+            if trace_evidence.error_spans_count >= 2:
+                likelihoods[FailureCategory.EC_3_CASCADE] += 7.0 + min(4.0, leaf_depth * 1.5)
+            elif trace_evidence.error_spans_count == 1:
+                likelihoods[FailureCategory.EC_3_CASCADE] += 3.0
+            elif trace_evidence.total_traces > 0 and not trace_evidence.error_spans_count:
+                likelihoods[FailureCategory.EC_2_LATENCY] += 4.0
+
+        # Log evidence likelihood contribution
+        total_novel_templates = sum(ev.novel_templates_count for ev in log_evidences.values())
+        total_snippets = sum(len(ev.snippets) for ev in log_evidences.values())
+        if total_snippets > 0:
+            likelihoods[FailureCategory.CODE_BUG] += 3.5 + min(4.5, total_novel_templates * 1.5)
+            for ev in log_evidences.values():
+                for snip in ev.snippets:
+                    snip_low = snip.target_line.lower()
+                    if any(w in snip_low for w in ["connection refused", "network unreachable", "dns lookup failed", "host down"]):
+                        likelihoods[FailureCategory.EC_5_INFRA] += 3.0
+
+        # Dynamically deduce highest-probability failure category
+        failure_cat = max(likelihoods.keys(), key=lambda k: likelihoods[k])
+        if max(likelihoods.values()) <= 0.2:
+            failure_cat = FailureCategory.UNKNOWN
+
+        # 7. Dynamic Bayesian Consensus Confidence Calculation
+        # Signal-specific normalized certainty factors c_m in [0, 1]
+        c_metrics = min(0.95, max(0.40, max_metric_div / 8.0)) if (metric_evidence and metric_evidence.alerts) else 0.0
+        c_traces = min(0.95, max(0.50, 0.45 + 0.15 * leaf_depth)) if (trace_evidence and trace_evidence.error_spans_count > 0) else 0.0
+        c_logs = min(0.90, max(0.35, 0.35 + 0.10 * min(5, total_snippets))) if total_snippets > 0 else 0.0
+
+        # Active agreeing signals for top candidate
+        active_certainties = []
+        agreeing_signals = 0
+        if top_service in signal_votes["METRICS"] and c_metrics > 0:
+            active_certainties.append(c_metrics)
+            agreeing_signals += 1
+        if top_service in signal_votes["TRACES"] and c_traces > 0:
+            active_certainties.append(c_traces)
+            agreeing_signals += 1
+        if top_service in signal_votes["LOGS"] and c_logs > 0:
+            active_certainties.append(c_logs)
+            agreeing_signals += 1
+
+        # Bayesian independent probability combination: 1 - product(1 - c_m)
+        if active_certainties:
+            prod_uncertainty = 1.0
+            for c in active_certainties:
+                prod_uncertainty *= (1.0 - c)
+            raw_confidence = 1.0 - prod_uncertainty
+            confidence = max(0.55, min(0.98, round(raw_confidence, 2)))
+        else:
+            confidence = 0.50
+
+        # Determine Primary Signal dynamically
+        if agreeing_signals >= 2:
+            primary_signal = "FUSION"
+        elif top_service in signal_votes["TRACES"]:
+            primary_signal = "TRACES"
+        elif top_service in signal_votes["METRICS"]:
+            primary_signal = "METRICS"
+        elif top_service in signal_votes["LOGS"]:
+            primary_signal = "LOGS"
+        else:
+            primary_signal = "FUSION"
 
         # Evidence Insights
         logs_insight = self._summarize_logs_insight(log_evidences, top_service)
         metrics_insight = self._summarize_metrics_insight(metric_evidence, top_service)
         traces_insight = self._summarize_traces_insight(trace_evidence, top_service)
-
-        # Failure Category deduction
-        if metric_evidence and metric_evidence.has_oom_alert:
-            failure_cat = FailureCategory.EC_1_OOM
-            primary_signal = "METRICS" if not trace_evidence or not trace_evidence.culprit_service else "FUSION"
-        elif trace_evidence and trace_evidence.culprit_span and trace_evidence.error_spans_count >= 2:
-            failure_cat = FailureCategory.EC_3_CASCADE
-            primary_signal = "TRACES" if not metric_evidence or not metric_evidence.alerts else "FUSION"
-        elif metric_evidence and metric_evidence.has_latency_anomaly:
-            failure_cat = FailureCategory.EC_2_LATENCY
-            primary_signal = "METRICS" if not trace_evidence or not trace_evidence.culprit_service else "FUSION"
-        elif log_evidences and any(ev.snippets for ev in log_evidences.values()):
-            failure_cat = FailureCategory.CODE_BUG
-            primary_signal = "LOGS"
-
-        # Consensus confidence calculation
-        agreeing_signals = 0
-        if any(top_service in svcs for svcs in signal_votes.values()):
-            for k, svcs in signal_votes.items():
-                if top_service in svcs:
-                    agreeing_signals += 1
-
-        confidence = 0.60
-        if agreeing_signals >= 3:
-            confidence = 0.95
-            primary_signal = "FUSION"
-        elif agreeing_signals == 2:
-            confidence = 0.85
-            primary_signal = "FUSION"
-        elif agreeing_signals == 1:
-            confidence = 0.70
 
         # Build narrative reasoning
         triangulation_reasoning = self._build_reasoning(

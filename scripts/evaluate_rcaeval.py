@@ -72,7 +72,7 @@ def run_diagnosis_pipeline(
             root_cause_service=top_svc,
             culprit_services=rag_ctx.candidate_services[:3] if rag_ctx.candidate_services else [top_svc],
             failure_category=rag_ctx.hypothesized_category,
-            confidence_score=0.92,
+            confidence_score=rag_ctx.confidence,
             root_cause_summary=f"Telemetry-RAG localized root cause to '{top_svc}' failing under {rag_ctx.hypothesized_category.value}.",
             evidence_triangulation=rag_ctx.triangulation,
         )

@@ -159,12 +159,14 @@ def main():
             )
             duration_ms = (time.time() - start_t) * 1000.0
 
+            engine_name = "LIVE_LLM" if client.is_configured else "OFFLINE_RETRIEVER_HEURISTIC"
             score = score_single_case(
                 case_id=snapshot.run_id,
                 ground_truth_service=gt_service,
                 ground_truth_fault=gt_fault,
                 report=report,
                 duration_ms=duration_ms,
+                engine_type=engine_name,
             )
             scores.append(score)
 
@@ -188,6 +190,7 @@ def main():
     summary_table.add_column("Metric", style="bold cyan")
     summary_table.add_column("Score", style="bold green")
 
+    summary_table.add_row("Evaluation Engine", "LIVE_LLM (Gemini)" if client.is_configured else "OFFLINE_RETRIEVER_HEURISTIC")
     summary_table.add_row("Total Evaluated Cases", str(summary["total_cases"]))
     summary_table.add_row("Top@1 Accuracy", f"{summary['overall_top1']:.2%}")
     summary_table.add_row("Top@3 Accuracy", f"{summary['overall_top3']:.2%}")

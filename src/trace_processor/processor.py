@@ -95,6 +95,7 @@ class TraceProcessor:
         culprit_candidates: Dict[str, int] = defaultdict(int)
         best_culprit_span: Optional[TraceSpanEvidence] = None
         root_services: Set[str] = set()
+        service_dep_graph: Dict[str, Set[str]] = defaultdict(set)
 
         failing_trace_hierarchies: List[str] = []
 
@@ -116,6 +117,11 @@ class TraceProcessor:
                 parents_map[span.spanID] = parent_id
                 if parent_id and parent_id in span_map:
                     children_map[parent_id].append(span.spanID)
+                    # Track caller -> callee service dependency edge
+                    p_svc = extract_service_from_span(span_map[parent_id])
+                    c_svc = extract_service_from_span(span)
+                    if p_svc and c_svc and p_svc != c_svc and p_svc != "unknown_service" and c_svc != "unknown_service":
+                        service_dep_graph[p_svc].add(c_svc)
 
             # Find root span(s)
             root_spans = [s for s in trace.spans if not parents_map.get(s.spanID) or parents_map[s.spanID] not in span_map]
@@ -154,11 +160,31 @@ class TraceProcessor:
                     trace_error_spans.append(s)
                     error_spans_count += 1
 
+            # Check for timeout / deadline inversion:
+            # If a parent failed due to timeout/deadline exceeded, identify bottleneck child
+            bottleneck_child_spans: List[TraceSpan] = []
+            for s in trace_error_spans:
+                is_err, s_code, e_code, e_msg = extract_error_info(s)
+                err_text = f"{e_code or ''} {e_msg or ''}".lower()
+                is_timeout = s_code in [504, 4] or any(
+                    w in err_text for w in ["deadline", "timeout", "timed out", "context deadline exceeded"]
+                )
+                if is_timeout and children_map.get(s.spanID):
+                    # Check if a child consumed majority of the parent's duration
+                    p_dur = s.duration if s.duration > 0 else 1.0
+                    for c_id in children_map[s.spanID]:
+                        c_span = span_map[c_id]
+                        if c_span.duration >= 0.6 * p_dur or self_durations_ms.get(c_id, 0.0) >= 0.5 * (p_dur / 1000.0):
+                            bottleneck_child_spans.append(c_span)
+
+            # Combine explicit error spans and timeout bottleneck spans
+            candidate_spans_for_leaf = trace_error_spans + bottleneck_child_spans
+
             # Leaf culprit extraction:
             # If multiple error spans, find the one with MAXIMUM depth (deepest leaf)
-            if trace_error_spans:
-                trace_error_spans.sort(key=lambda s: depths.get(s.spanID, 0), reverse=True)
-                leaf_span = trace_error_spans[0]
+            if candidate_spans_for_leaf:
+                candidate_spans_for_leaf.sort(key=lambda s: depths.get(s.spanID, 0), reverse=True)
+                leaf_span = candidate_spans_for_leaf[0]
                 leaf_svc = extract_service_from_span(leaf_span)
                 culprit_candidates[leaf_svc] += 3  # Higher weight for leaf error
 
@@ -220,6 +246,7 @@ class TraceProcessor:
             root_service=root_service,
             culprit_service=culprit_service,
             culprit_span=best_culprit_span,
+            service_dependency_graph={k: sorted(list(v)) for k, v in service_dep_graph.items()},
             call_hierarchy_summary=call_hierarchy_summary,
             formatted_prompt=formatted_prompt,
             estimated_tokens=est_tokens,

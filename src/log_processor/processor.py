@@ -150,7 +150,7 @@ class LogSageProcessor:
             primary_target = kw_targets[0] if kw_targets else targets[0]
 
             ctx_before, target_line, ctx_after = expand_asymmetric_context(
-                raw_lines, primary_target, m=self.m_before, n=self.n_after
+                raw_lines, primary_target, m=self.m_before, n=self.n_after, filter_probes=True
             )
 
             snippet = LogSnippet(

@@ -136,3 +136,54 @@ def test_clean_traces_no_errors():
     assert evidence.error_spans_count == 0
     assert evidence.culprit_service is None
     assert evidence.culprit_span is None
+
+
+def test_service_dependency_graph_and_timeout_inversion():
+    """
+    Verifies:
+    1. Caller -> callee dependency graph extraction.
+    2. Timeout inversion: caller gets 504 / DEADLINE_EXCEEDED because child hung for 5000ms.
+    Child is identified as bottleneck culprit even if child didn't emit error tag.
+    """
+    processor = TraceProcessor()
+
+    spans = [
+        # Caller frontend: times out with 504
+        TraceSpan(
+            traceID="tr_timeout_1",
+            spanID="sp_front",
+            operationName="/convert",
+            startTime=1000000,
+            duration=5050000,  # 5050ms
+            tags=[
+                {"key": "service.name", "value": "frontend"},
+                {"key": "http.status_code", "value": 504},
+                {"key": "error", "value": True},
+                {"key": "error.message", "value": "context deadline exceeded"},
+            ],
+            references=[],
+        ),
+        # Callee currencyservice: consumed 5000ms, hung, but no explicit error tag
+        TraceSpan(
+            traceID="tr_timeout_1",
+            spanID="sp_curr",
+            operationName="/ConvertCurrency",
+            startTime=1010000,
+            duration=5000000,  # 5000ms (99% of parent duration)
+            tags=[
+                {"key": "service.name", "value": "currencyservice"},
+            ],
+            references=[{"refType": "CHILD_OF", "traceID": "tr_timeout_1", "spanID": "sp_front"}],
+        ),
+    ]
+
+    trace = Trace(traceID="tr_timeout_1", spans=spans)
+    evidence = processor.process([trace])
+
+    # 1. Dependency graph check
+    assert "frontend" in evidence.service_dependency_graph
+    assert "currencyservice" in evidence.service_dependency_graph["frontend"]
+
+    # 2. Timeout inversion check: currencyservice pinpointed, not frontend
+    assert evidence.culprit_service == "currencyservice"
+

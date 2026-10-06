@@ -166,3 +166,38 @@ def test_fusion_engine_leaf_culprit_priority():
     assert triangulation.primary_signal in ["TRACES", "FUSION"]
     assert "paymentservice" in triangulation.triangulation_reasoning
     assert confidence >= 0.70
+
+
+def test_topological_causal_graph_propagation():
+    """
+    Verifies that when caller (frontend) and callee (cartservice) both log errors,
+    the topological dependency graph dampens the caller and attributes causality to callee.
+    """
+    engine = FusionEngine()
+
+    # Both log errors
+    log_ev = {
+        "frontend": LogEvidence(
+            service="frontend",
+            total_raw_lines=50,
+            snippets=[LogSnippet(service="frontend", line_number=5, target_line="Failed to connect to cartservice")],
+        ),
+        "cartservice": LogEvidence(
+            service="cartservice",
+            total_raw_lines=50,
+            snippets=[LogSnippet(service="cartservice", line_number=12, target_line="Out of memory crash")],
+        ),
+    }
+
+    # Dependency graph shows frontend -> cartservice
+    trace_ev = TraceEvidence(
+        total_traces=1,
+        total_spans=2,
+        error_spans_count=1,
+        culprit_service="cartservice",
+        service_dependency_graph={"frontend": ["cartservice"]},
+    )
+
+    ranked, _, _, _ = engine.correlate(log_evidences=log_ev, trace_evidence=trace_ev)
+    assert ranked[0] == "cartservice"
+

@@ -118,3 +118,64 @@ def test_latency_anomaly_detection():
     assert evidence.has_latency_anomaly is True
     assert len(evidence.alerts) == 1
     assert evidence.alerts[0].service == "frontend"
+
+
+def test_robust_mad_z_score_detection():
+    processor = MetricsProcessor(z_threshold=3.0)
+
+    # Baseline with skewed latency data: mostly 0.05, a couple 0.08
+    baseline = [
+        MetricSeries(
+            metric_name="checkoutservice/http_latency",
+            query="rcaeval",
+            data=[{"timestamp": 100.0 + i, "value": 0.05 if i % 4 != 0 else 0.06} for i in range(20)],
+        )
+    ]
+
+    # Incident with sudden latency jump
+    incident = [
+        MetricSeries(
+            metric_name="checkoutservice/http_latency",
+            query="rcaeval",
+            data=[
+                {"timestamp": 200.0, "value": 0.05},
+                {"timestamp": 205.0, "value": 2.5},
+            ],
+        )
+    ]
+
+    evidence = processor.process(incident, baseline)
+    assert len(evidence.alerts) == 1
+    alert = evidence.alerts[0]
+    assert alert.robust_z_score is not None
+    assert abs(alert.robust_z_score) > 3.0
+
+
+def test_cgroup_memory_limit_time_to_oom():
+    processor = MetricsProcessor()
+
+    # Memory limit is 200MB, current usage climbing from 150MB to 180MB at 3MB/s
+    # Remaining = 20MB -> TimeToOOM = ~6.6 seconds (< 300s)
+    incident = [
+        MetricSeries(
+            metric_name="cartservice/spec_memory_limit_bytes",
+            query="rcaeval",
+            data=[{"timestamp": 200.0, "value": 200000000.0}],
+        ),
+        MetricSeries(
+            metric_name="cartservice/container_memory_bytes",
+            query="rcaeval",
+            data=[
+                {"timestamp": 200.0, "value": 150000000.0},
+                {"timestamp": 210.0, "value": 180000000.0},
+            ],
+        ),
+    ]
+
+    evidence = processor.process(incident)
+    assert evidence.has_oom_alert is True
+    mem_alert = [a for a in evidence.alerts if a.metric_name == "cartservice/container_memory_bytes"][0]
+    assert mem_alert.is_oom_risk is True
+    assert mem_alert.time_to_oom_seconds is not None
+    assert mem_alert.time_to_oom_seconds < 300.0
+

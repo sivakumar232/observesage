@@ -44,14 +44,15 @@ class FusionEngine:
         trace_evidence: Optional[TraceEvidence] = None,
     ) -> Tuple[List[str], FailureCategory, EvidenceTriangulation, float]:
         """
-        Synthesizes multi-signal evidence.
+        Synthesizes multi-signal evidence using topological call graph propagation
+        and cross-modal consensus scoring.
         Returns:
             (ranked_culprits, failure_category, evidence_triangulation, initial_confidence)
         """
         service_scores: Dict[str, float] = defaultdict(float)
         signal_votes: Dict[str, List[str]] = {"LOGS": [], "METRICS": [], "TRACES": []}
 
-        # 1. Score from Logs
+        # 1. Base Score from Logs
         for svc, log_ev in log_evidences.items():
             if not log_ev.snippets:
                 continue
@@ -62,7 +63,7 @@ class FusionEngine:
             service_scores[svc] += score
             signal_votes["LOGS"].append(svc)
 
-        # 2. Score from Metrics
+        # 2. Base Score from Metrics
         if metric_evidence and metric_evidence.alerts:
             for alert in metric_evidence.alerts:
                 svc = alert.service
@@ -73,7 +74,7 @@ class FusionEngine:
                     service_scores[svc] += self.metric_alert_weight * sev_mult
                 signal_votes["METRICS"].append(svc)
 
-        # 3. Score from Traces
+        # 3. Base Score from Traces
         if trace_evidence:
             if trace_evidence.culprit_service:
                 svc = trace_evidence.culprit_service
@@ -82,6 +83,32 @@ class FusionEngine:
                     boost += 2.0  # Extra confidence for leaf depth > 0
                 service_scores[svc] += boost
                 signal_votes["TRACES"].append(svc)
+
+        # 4. Topological Causal Graph Propagation (Dampen upstream callers, attribute to callee)
+        if trace_evidence and trace_evidence.service_dependency_graph:
+            dep_graph = trace_evidence.service_dependency_graph
+            for caller, callees in dep_graph.items():
+                if caller not in service_scores:
+                    continue
+                # If any downstream callee has error signals, caller is likely a secondary symptom
+                failing_callees = [
+                    c for c in callees
+                    if c in service_scores and (c in signal_votes["TRACES"] or c in signal_votes["METRICS"] or c in signal_votes["LOGS"])
+                ]
+                if failing_callees:
+                    # Dampen caller's score because its errors are topologically explained by downstream callees
+                    service_scores[caller] *= 0.60
+                    for c in failing_callees:
+                        # Topological attribution boost to callee
+                        service_scores[c] += 2.0
+
+        # 5. Cross-Modal Consensus Multiplier (Reward multi-signal agreement)
+        for svc in list(service_scores.keys()):
+            modalities_count = sum(1 for modal, svcs in signal_votes.items() if svc in svcs)
+            if modalities_count == 2:
+                service_scores[svc] *= 1.35
+            elif modalities_count >= 3:
+                service_scores[svc] *= 1.75
 
         # Rank candidates
         ranked_candidates = sorted(service_scores.keys(), key=lambda s: service_scores[s], reverse=True)

@@ -71,23 +71,40 @@ def build_multimodal_prompt(
 ) -> str:
     """
     Constructs a budgeted, blind prompt for LLM diagnosis.
-    Guarantees no scenario ground-truth leakage and strictly caps total tokens.
+    Dynamically balances token budgets proportionally across active telemetry signals
+    and injects observed service call topology for causal reasoning.
     """
     sections: List[str] = [f"### Incident Reference ID: {run_id}"]
 
-    # 1. Traces Section (allocated ~400 tokens)
     include_traces = mode in ["logs-traces", "fusion"] and trace_evidence is not None
-    if include_traces and trace_evidence and trace_evidence.formatted_prompt:
-        trace_str = truncate_to_tokens(trace_evidence.formatted_prompt, 400)
-        sections.append(trace_str)
-
-    # 2. Metrics Section (allocated ~400 tokens)
     include_metrics = mode in ["logs-metrics", "fusion"] and metric_evidence is not None
-    if include_metrics and metric_evidence and metric_evidence.formatted_prompt:
-        metric_str = truncate_to_tokens(metric_evidence.formatted_prompt, 400)
-        sections.append(metric_str)
 
-    # 3. Logs Section (allocated remainder, up to 1300 tokens)
+    # Dynamically compute proportional budgets based on max_total_tokens
+    active_signals = 1 + (1 if include_traces else 0) + (1 if include_metrics else 0)
+    trace_budget = max(400, int(max_total_tokens * 0.35)) if include_traces else 0
+    metric_budget = max(350, int(max_total_tokens * 0.25)) if include_metrics else 0
+
+    # 1. Traces Section (includes service call topology if available)
+    if include_traces and trace_evidence:
+        trace_parts: List[str] = []
+        if trace_evidence.service_dependency_graph:
+            topo_lines = ["### Service Dependency Graph (Caller -> Callees):"]
+            for caller, callees in sorted(trace_evidence.service_dependency_graph.items()):
+                topo_lines.append(f"- {caller} ➔ [{', '.join(callees)}]")
+            trace_parts.append("\n".join(topo_lines))
+
+        if trace_evidence.formatted_prompt:
+            trace_parts.append(trace_evidence.formatted_prompt)
+
+        if trace_parts:
+            combined_trace = "\n\n".join(trace_parts)
+            sections.append(truncate_to_tokens(combined_trace, trace_budget))
+
+    # 2. Metrics Section
+    if include_metrics and metric_evidence and metric_evidence.formatted_prompt:
+        sections.append(truncate_to_tokens(metric_evidence.formatted_prompt, metric_budget))
+
+    # 3. Logs Section (allocated remaining budget)
     log_blocks: List[str] = []
     if log_evidences:
         for svc, ev in sorted(log_evidences.items(), key=lambda item: len(item[1].snippets), reverse=True):
@@ -102,7 +119,7 @@ def build_multimodal_prompt(
         sections.append("### Extracted Log Evidence (Drain3 Novel Templates & Asymmetric Context):\n" + budgeted_logs)
 
     sections.append(
-        "\nAnalyze the telemetry evidence above, triangulate signals across modalities, "
+        "\nAnalyze the telemetry evidence above, triangulate signals across modalities using the dependency topology, "
         "and produce the structured Root Cause Analysis report."
     )
 

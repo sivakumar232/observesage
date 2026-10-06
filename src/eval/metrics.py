@@ -27,6 +27,7 @@ class CaseScore:
     confidence: float
     prompt_tokens: int
     duration_ms: float = 0.0
+    engine_type: str = "LIVE_LLM"
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -40,6 +41,7 @@ def score_single_case(
     ground_truth_fault: str,
     report: RCAReport,
     duration_ms: float = 0.0,
+    engine_type: str = "LIVE_LLM",
 ) -> CaseScore:
     """
     Evaluates an RCAReport against ground-truth labels.
@@ -81,6 +83,7 @@ def score_single_case(
         confidence=report.confidence_score,
         prompt_tokens=report.prompt_tokens_used,
         duration_ms=duration_ms,
+        engine_type=engine_type,
     )
 
 

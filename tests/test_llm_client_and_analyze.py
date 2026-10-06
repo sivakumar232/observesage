@@ -20,22 +20,17 @@ from src.trace_processor import TraceProcessor
 from src.llm.prompt import build_multimodal_prompt
 
 
-def test_client_strict_evaluation_gating():
+from src.rag import TelemetryRAGRetriever
+
+
+def test_client_requires_live_api_key():
     # Force client with no API key
     client = GeminiRCAClient(api_key=None)
     client._genai_client = None
 
-    # In strict evaluation mode, MUST raise RuntimeError
-    with pytest.raises(RuntimeError, match="Academic benchmark evaluation requires a live Gemini API key"):
-        client.diagnose(run_id="run_eval_001", scenario="test", user_prompt="test prompt", allow_heuristic=False)
-
-    # In offline fallback mode, returns deterministic heuristic report
-    report = client.diagnose(
-        run_id="run_eval_001", scenario="test", user_prompt="oom memory error", allow_heuristic=True
-    )
-    assert report.root_cause_service == "cartservice"
-    assert report.failure_category == FailureCategory.EC_1_OOM
-    assert len(report.culprit_services) > 0
+    # Zero deterministic heuristic fallback: MUST raise RuntimeError
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY is not configured"):
+        client.diagnose(run_id="run_eval_001", scenario="test", rag_prompt="test prompt")
 
 
 def test_rca_report_ranked_culprits_sync():
@@ -148,3 +143,36 @@ def test_tri_modal_analysis_pipeline_integration():
     assert "cartservice" in prompt
     assert "Metric Anomaly Alerts" in prompt
     assert "Distributed Trace Analysis" in prompt
+
+
+def test_telemetry_rag_retriever_pipeline():
+    """
+    Verifies that TelemetryRAGRetriever encapsulates multi-signal retrieval
+    and produces a bounded RAG prompt context.
+    """
+    data = {
+        "run_id": "test_rag_run",
+        "logs": {
+            "checkoutservice": ["2026-10-06T10:00:00Z [ERROR] failed to complete order"],
+        },
+        "metrics": [
+            {
+                "metric_name": "checkoutservice/cpu",
+                "query": "rcaeval",
+                "data": [
+                    {"timestamp": 100.0, "value": 0.5},
+                    {"timestamp": 105.0, "value": 25.0},
+                ],
+            }
+        ],
+    }
+    snapshot = TelemetrySnapshot(**data)
+    retriever = TelemetryRAGRetriever()
+    rag_ctx = retriever.retrieve(snapshot, mode="fusion")
+
+    assert rag_ctx.run_id == "test_rag_run"
+    assert "checkoutservice" in rag_ctx.candidate_services
+    assert rag_ctx.token_count > 0
+    assert rag_ctx.token_count < 2500
+    assert "checkoutservice" in rag_ctx.rag_prompt
+

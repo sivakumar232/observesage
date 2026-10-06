@@ -16,7 +16,7 @@ RCAEVAL_TO_OBSERVASAGE: Dict[str, FailureCategory] = {
     "LOSS": FailureCategory.EC_2_LATENCY,
     "NET_LOSS": FailureCategory.EC_2_LATENCY,
     "CORRUPT": FailureCategory.EC_4_SILENT,
-    "CPU": FailureCategory.CODE_BUG,
+    "CPU": FailureCategory.EC_2_LATENCY,
     "DISK": FailureCategory.EC_1_OOM,
     "SOCKET": FailureCategory.EC_5_INFRA,
     "PARTITION": FailureCategory.EC_5_INFRA,

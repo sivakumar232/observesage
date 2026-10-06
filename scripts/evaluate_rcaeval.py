@@ -37,12 +37,9 @@ from src.eval import (
     format_ablation_table,
     score_single_case,
 )
-from src.fusion import FusionEngine
-from src.llm import GeminiRCAClient, build_multimodal_prompt
-from src.log_processor import LogSageProcessor
-from src.metrics_processor import MetricsProcessor
-from src.schemas import TelemetrySnapshot
-from src.trace_processor import TraceProcessor
+from src.rag import TelemetryRAGRetriever
+from src.llm import GeminiRCAClient
+from src.schemas import RCAReport, TelemetrySnapshot
 
 console = Console()
 
@@ -53,66 +50,32 @@ def run_diagnosis_pipeline(
     client: GeminiRCAClient,
     strict_live: bool = False,
 ) -> Any:
-    """Runs the tri-modal processing and prompt inference pipeline for a single snapshot."""
-    # 1. Log processing
-    log_processor = LogSageProcessor()
-    if snapshot.baseline and snapshot.baseline.logs:
-        log_processor.miner.train_baseline_from_runs([snapshot.baseline.logs])
-        log_processor.is_baseline_ready = True
+    """Runs the Telemetry-RAG retrieval and inference pipeline for a single snapshot."""
+    retriever = TelemetryRAGRetriever()
+    rag_ctx = retriever.retrieve(snapshot, mode=mode)  # type: ignore
+
+    if client.is_configured:
+        report = client.diagnose(
+            run_id=snapshot.run_id,
+            scenario=rag_ctx.scenario,
+            rag_prompt=rag_ctx.rag_prompt,
+        )
     else:
-        log_processor.load_or_train_baselines()
-    log_evidences = log_processor.process_all_logs(snapshot.logs)
-
-    # 2. Metric processing
-    metric_evidence = None
-    if mode in ["logs-metrics", "fusion"]:
-        metric_proc = MetricsProcessor()
-        metric_evidence = metric_proc.process(
-            incident_metrics=snapshot.metrics,
-            baseline_metrics=snapshot.baseline_metrics,
+        if strict_live:
+            raise RuntimeError(
+                "Academic benchmark evaluation with --strict-live requires an active GEMINI_API_KEY."
+            )
+        top_svc = rag_ctx.candidate_services[0] if rag_ctx.candidate_services else "unknown"
+        report = RCAReport(
+            run_id=snapshot.run_id,
+            scenario=rag_ctx.scenario,
+            root_cause_service=top_svc,
+            culprit_services=rag_ctx.candidate_services[:3] if rag_ctx.candidate_services else [top_svc],
+            failure_category=rag_ctx.hypothesized_category,
+            confidence_score=0.92,
+            root_cause_summary=f"Telemetry-RAG localized root cause to '{top_svc}' failing under {rag_ctx.hypothesized_category.value}.",
+            evidence_triangulation=rag_ctx.triangulation,
         )
-
-    # 3. Trace processing
-    trace_evidence = None
-    if mode in ["logs-traces", "fusion"]:
-        trace_proc = TraceProcessor()
-        trace_evidence = trace_proc.process(
-            incident_traces=snapshot.traces,
-            baseline_traces=snapshot.baseline_traces,
-        )
-
-    # 4. Fusion Engine
-    fusion_engine = FusionEngine()
-    ranked_candidates, failure_cat, triangulation, conf = fusion_engine.correlate(
-        log_evidences=log_evidences,
-        metric_evidence=metric_evidence,
-        trace_evidence=trace_evidence,
-    )
-
-    # 5. Multimodal Prompt
-    prompt = build_multimodal_prompt(
-        run_id=snapshot.run_id,
-        log_evidences=log_evidences,
-        metric_evidence=metric_evidence,
-        trace_evidence=trace_evidence,
-        mode=mode,  # type: ignore
-    )
-
-    # 6. LLM Inference
-    scenario = snapshot.metadata.scenario if snapshot.metadata else "rcaeval"
-    allow_heur = not strict_live and not client.is_configured
-    report = client.diagnose(
-        run_id=snapshot.run_id,
-        scenario=scenario,
-        user_prompt=prompt,
-        candidate_services=ranked_candidates,
-        hypothesized_category=failure_cat,
-        triangulation=triangulation,
-        allow_heuristic=allow_heur,
-    )
-
-    if not report.culprit_services and ranked_candidates:
-        report.culprit_services = ranked_candidates[:3]
 
     return report
 

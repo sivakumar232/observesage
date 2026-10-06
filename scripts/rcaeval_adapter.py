@@ -337,12 +337,22 @@ class RCAEvalAdapter:
 
         if traces_parquet.exists() and pd is not None:
             df = pd.read_parquet(traces_parquet)
-            # Sample to at most 10,000 spans to keep memory efficient if trace file is huge
-            if len(df) > 10000:
-                # Prioritize spans around injection window
-                df = df.iloc[-10000:]
-
             time_col = detect_column(df.columns.tolist(), ["startTime", "startTimeMillis", "time", "timestamp", "ts"])
+            if time_col and len(df) > 0:
+                raw_times = df[time_col].values
+                # Standardize to seconds
+                if float(raw_times[0]) > 1e12:
+                    ts_seconds = raw_times / 1e6
+                else:
+                    ts_seconds = raw_times
+                
+                mask = (ts_seconds >= baseline_start) & (ts_seconds <= incident_end)
+                df = df[mask]
+                
+                # Sample up to 10,000 spans from within the window if still large
+                if len(df) > 10000:
+                    df = df.iloc[:10000]
+
             trace_id_col = detect_column(df.columns.tolist(), ["traceID", "trace_id", "id"])
             span_id_col = detect_column(df.columns.tolist(), ["spanID", "span_id"])
             parent_id_col = detect_column(df.columns.tolist(), ["parentSpanID", "parent_id", "parent_span_id"])

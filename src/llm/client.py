@@ -1,7 +1,7 @@
 """
 Gemini LLM Client for ObservaSage Root Cause Analysis.
 Supports Google GenAI SDK with structured Pydantic schema validation.
-Provides mock fallback for offline development and testing.
+Includes schema validation recovery retry loop and strict evaluation gating (zero heuristic fallback).
 """
 
 import json
@@ -9,6 +9,8 @@ import os
 import re
 from typing import Optional
 from dotenv import load_dotenv
+from pydantic import ValidationError
+
 from src.schemas.rca_report import (
     EvidenceTriangulation,
     FailureCategory,
@@ -22,7 +24,7 @@ load_dotenv()
 
 class GeminiRCAClient:
     """
-    Client interface for querying Gemini models with structured JSON output.
+    Client interface for querying Gemini models with structured JSON output and schema retry loop.
     """
 
     def __init__(self, model_name: str = "gemini-1.5-pro", api_key: Optional[str] = None):
@@ -42,17 +44,38 @@ class GeminiRCAClient:
         """Returns True if a live Gemini API key is configured."""
         return self._genai_client is not None
 
-    def diagnose(self, run_id: str, scenario: str, user_prompt: str) -> RCAReport:
+    def diagnose(
+        self,
+        run_id: str,
+        scenario: str,
+        user_prompt: str,
+        allow_heuristic: bool = True,
+    ) -> RCAReport:
         """
         Sends diagnostic prompt to Gemini and parses the structured RCAReport response.
-        If no API key is configured, produces a fallback diagnostic based on heuristic patterns.
+        If allow_heuristic is False (e.g. academic benchmark mode), fails loudly on API error
+        rather than poisoning results with heuristic pattern matching.
         """
         if self._genai_client is not None:
-            return self._diagnose_live(run_id, scenario, user_prompt)
+            try:
+                return self._diagnose_live(run_id, scenario, user_prompt, max_retries=1)
+            except Exception as e:
+                if not allow_heuristic:
+                    raise RuntimeError(f"Gemini live diagnosis failed in strict evaluation mode: {e}") from e
+                return self._diagnose_heuristic(run_id, scenario, user_prompt, error_note=str(e))
+
+        if not allow_heuristic:
+            raise RuntimeError(
+                "GEMINI_API_KEY is not configured, and allow_heuristic is False. "
+                "Academic benchmark evaluation requires a live Gemini API key."
+            )
+
         return self._diagnose_heuristic(run_id, scenario, user_prompt)
 
-    def _diagnose_live(self, run_id: str, scenario: str, user_prompt: str) -> RCAReport:
-        """Queries the Gemini API with structured schema enforcement."""
+    def _diagnose_live(
+        self, run_id: str, scenario: str, user_prompt: str, max_retries: int = 1
+    ) -> RCAReport:
+        """Queries the Gemini API with structured schema enforcement and retry on validation failure."""
         from google.genai import types
 
         config = types.GenerateContentConfig(
@@ -68,18 +91,31 @@ class GeminiRCAClient:
             config=config,
         )
 
-        try:
-            raw_text = response.text
-            data = json.loads(raw_text)
-            report = RCAReport(**data)
-            # Record usage tokens if available
-            if hasattr(response, "usage_metadata") and response.usage_metadata:
-                report.prompt_tokens_used = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
-                report.total_tokens_used = getattr(response.usage_metadata, "total_token_count", 0) or 0
-            return report
-        except Exception as e:
-            # Fallback if parsing fails
-            return self._diagnose_heuristic(run_id, scenario, user_prompt, error_note=str(e))
+        last_error = None
+        raw_text = response.text or "{}"
+        for attempt in range(max_retries + 1):
+            try:
+                data = json.loads(raw_text)
+                report = RCAReport(**data)
+                if hasattr(response, "usage_metadata") and response.usage_metadata:
+                    report.prompt_tokens_used = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+                    report.total_tokens_used = getattr(response.usage_metadata, "total_token_count", 0) or 0
+                return report
+            except (json.JSONDecodeError, ValidationError) as err:
+                last_error = err
+                if attempt < max_retries:
+                    retry_msg = (
+                        f"Previous output caused validation error: {err}.\n"
+                        f"Output JSON must strictly conform to the RCAReport schema."
+                    )
+                    retry_resp = self._genai_client.models.generate_content(
+                        model=self.model_name,
+                        contents=[user_prompt, raw_text, retry_msg],
+                        config=config,
+                    )
+                    raw_text = retry_resp.text or "{}"
+
+        raise RuntimeError(f"Structured RCAReport validation failed after {max_retries} retry/retries: {last_error}")
 
     def _diagnose_heuristic(
         self, run_id: str, scenario: str, user_prompt: str, error_note: Optional[str] = None
@@ -145,6 +181,7 @@ class GeminiRCAClient:
             run_id=run_id,
             scenario=scenario,
             root_cause_service=root_service,
+            culprit_services=[root_service],
             failure_category=failure_cat,
             confidence_score=0.92,
             root_cause_summary=summary,

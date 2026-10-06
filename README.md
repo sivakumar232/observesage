@@ -2,7 +2,7 @@
 
 > **Multi-Signal AI Root Cause Analysis Framework** — Extending LogSage ([arXiv:2506.03691](https://arxiv.org/abs/2506.03691)) with Telemetry-RAG, Topological Causal Fusion, and Robust Statistical Modeling across Logs, Metrics, and Distributed Traces.
 
-[![Tests](https://img.shields.io/badge/pytest-35%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/pytest-38%20passed-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)]()
 [![Pydantic](https://img.shields.io/badge/pydantic-v2-orange.svg)]()
 [![Benchmark](https://img.shields.io/badge/benchmark-RCAEval-purple.svg)]()
@@ -18,17 +18,17 @@ When cloud-native microservices or CI/CD pipelines fail, identifying the culprit
 
 | Failure Category | Why Logs Alone Fail | How ObservaSage Solves It |
 |---|---|---|
-| **EC-1: OOM / Resource Exhaustion** | Process killed via Linux kernel `SIGKILL 137`. The dead process cannot write a log explaining why it died. | **Metrics Processor**: Pre-crash memory rate-of-change slope ($dM/dt$), cgroup limit correlation, and **TimeToOOM** (< 300s) projection alerts. |
-| **EC-2: Flaky / Intermittent Latency** | High network latency or CPU throttling occurs while requests return HTTP 200 OK — logs look completely identical to passing runs. | **Metrics & Traces**: Non-parametric **Median Absolute Deviation (MAD)** robust Z-scores and span $p99$ self-duration bottleneck isolation. |
+| **EC-1: OOM / Resource Exhaustion** | Process killed via Linux kernel `SIGKILL 137`. The dead process cannot write a log explaining why it died. | **Adaptive Metrics**: Dynamic baseline-scaled memory rate-of-change slope ($dM/dt$), cgroup limit correlation, and **TimeToOOM** (< 300s) projection alerts. |
+| **EC-2: Flaky / Intermittent Latency** | High network latency or CPU throttling occurs while requests return HTTP 200 OK — logs look completely identical to passing runs. | **Adaptive Metrics & Traces**: Non-parametric **Median Absolute Deviation (MAD)** with dynamic variance-scaled thresholding ($\tau \in [2.5, 5.0]$) and span $p99$ self-duration bottleneck isolation. |
 | **EC-3: Cascading Dependency Failure** | Root caller (e.g. `frontend`) logs hundreds of generic 500 errors; intermediate services log timeouts. The true origin is buried deep in the dependency tree. | **Trace Processor & Fusion**: DFS leaf culprit extraction, **timeout/deadline inversion (504/gRPC 4)**, and **topological causal damping** of caller symptoms. |
 | **EC-4: Silent Data Corruption** | Pipeline exits with code 0. Zero errors logged, but business data is corrupt (e.g., cart total $0.00). | **Multi-Signal Triangulation**: Correlates metric throughput dips and trace span payload metadata with Drain3 log template frequencies. |
 | **EC-5: Network Partition / Drift** | App logs only report vague connection timeouts. The problem is in the underlying network fabric. | **Cross-Modal Fusion**: Correlates socket disconnects with metric anomalies across boundary services. |
 
 ---
 
-## 2. Hardened System Architecture
+## 2. Hardened Dynamic Architecture
 
-ObservaSage implements a **Domain-Specific Telemetry-RAG Architecture**: raw telemetry (hundreds of thousands of logs, dozens of PromQL time series, thousands of Jaeger trace spans) is localized and distilled into validated evidence schemas before being synthesized into an LLM prompt strictly under **2,500 tokens**.
+ObservaSage implements an **Adaptive Domain-Specific Telemetry-RAG Architecture**: rather than relying on deterministic rule ladders or static heuristics, raw telemetry (hundreds of thousands of logs, dozens of PromQL time series, thousands of Jaeger trace spans) is localized and distilled through **dynamic statistical modeling** and **continuous Bayesian consensus**, bounded strictly under **2,500 BPE tokens** via elastic pooling.
 
 ```mermaid
 flowchart TD
@@ -48,18 +48,18 @@ flowchart TD
         RAW --> ADAPT --> SNAP
     end
 
-    subgraph RAG_LAYER ["2. MULTI-MODAL TELEMETRY-RAG RETRIEVAL"]
+    subgraph RAG_LAYER ["2. DYNAMIC MULTI-MODAL TELEMETRY-RAG RETRIEVAL"]
         direction TB
-        subgraph LOG_RAG ["1. Log Retriever (LogSage + Probe Filter)"]
+        subgraph LOG_RAG ["1. Log Retriever (Dynamic LogSage)"]
             L1["Drain3 Baseline Template Mining & Diffing"]
             L2["Paper Keyword Filtering ('fail', 'error', 'kill')"]
-            L3["Probe-Filtered Expansion (m=3, n=7, drop /healthz)"]
+            L3["Dynamic Continuation Expansion (m=3, n=7 + stack trace continuation)"]
             L1 --> L2 --> L3
         end
 
-        subgraph METRIC_RAG ["2. Metric Retriever (Robust & Quota-Aware)"]
-            M1["Non-Parametric MAD Z-Scores (Fat-tailed latency)"]
-            M2["Memory Rate-of-Change Slope (dM/dt)"]
+        subgraph METRIC_RAG ["2. Metric Retriever (Adaptive Thresholding)"]
+            M1["Adaptive Z-Score & MAD Scaling (tau in [2.5, 5.0] via baseline CV)"]
+            M2["Baseline-Scaled Memory Slope Sensitivity"]
             M3["cgroup Limit Correlation & TimeToOOM (<300s)"]
             M1 --> M2 --> M3
         end
@@ -76,11 +76,11 @@ flowchart TD
     SNAP --> METRIC_RAG
     SNAP --> TRACE_RAG
 
-    subgraph FUSION_LAYER ["3. TOPOLOGICAL CAUSAL FUSION & DYNAMIC TOKEN GATE"]
+    subgraph FUSION_LAYER ["3. BAYESIAN FUSION & ELASTIC TOKEN BUDGETING"]
         direction TB
         TOPO["Topological Causal Propagation<br/>• Caller symptom damping (0.60x)<br/>• Callee root attribution (+2.0)"]:::fusion
-        CONS["Cross-Modal Consensus Multiplier<br/>• 2 signals = 1.35x, 3 signals = 1.75x"]:::fusion
-        PROMPT["Dynamic Proportional Prompt Assembler<br/>• Injects Service Dependency Graph<br/>• Strict Cap: BPE &lt; 2,500 Tokens"]:::fusion
+        CONS["Multi-Hypothesis Scoring & Bayesian Consensus<br/>• Continuous noisy-OR confidence: 1 - prod(1 - c_m) in [0.50, 0.98]"]:::fusion
+        PROMPT["Elastic Dynamic Token Pool Assembler<br/>• Rolls over unused capacity across signals<br/>• Strict Cap: BPE &lt; 2,500 Tokens"]:::fusion
         TOPO --> CONS --> PROMPT
     end
 
@@ -91,9 +91,9 @@ flowchart TD
     subgraph INFERENCE ["4. STRUCTURED GENERATIVE LLM DIAGNOSIS"]
         direction TB
         GEMINI["Gemini 1.5 Pro / Flash Diagnostic Engine<br/>Temperature: 0.1 | Response Schema Enforcement"]:::llm
-        RETRY["Validation Diagnostic Retry Loop"]:::llm
+        FALLBACK["Dynamic Telemetry-RAG Fallback Engine<br/>Resilient to remote auth/quota failures"]:::llm
         REPORT[("Validated RCAReport JSON<br/>• root_cause_service<br/>• culprit_services (Top-k)<br/>• failure_category<br/>• evidence_triangulation<br/>• actionable remediation_steps")]:::llm
-        PROMPT --> GEMINI --> RETRY --> REPORT
+        PROMPT --> GEMINI --> FALLBACK --> REPORT
     end
 
     subgraph EVALUATION ["5. BENCHMARK SCORING & ABLATION MATRIX"]
@@ -159,28 +159,28 @@ final_year_project/
 │   │   ├── telemetry.py            # TelemetrySnapshot, MetricSeries, Trace, TimeBucketSummary
 │   │   ├── evidence.py             # LogEvidence, MetricEvidence, TraceEvidence, LogSnippet
 │   │   └── rca_report.py           # RCAReport, FailureCategory, EvidenceTriangulation, RemediationStep
-│   ├── log_processor/              # LogSage Baseline with Probe Filtering
+│   ├── log_processor/              # Dynamic LogSage Baseline with Probe & Stack Continuation
 │   │   ├── miner.py                # Drain3 parse-tree template miner & baseline diffing
-│   │   ├── filter.py               # LogSage keywords & probe-filtered asymmetric expansion (m=3, n=7)
-│   │   └── processor.py            # LogSageProcessor with token-budget management
-│   ├── metrics_processor/          # Statistical Metric Telemetry-RAG
-│   │   └── processor.py            # Non-parametric MAD Z-scores, memory slope dM/dt, TimeToOOM (<300s)
+│   │   ├── filter.py               # LogSage keywords & dynamic stack trace continuation expansion
+│   │   └── processor.py            # LogSageProcessor with dynamic context extraction
+│   ├── metrics_processor/          # Adaptive Metric Telemetry-RAG
+│   │   └── processor.py            # Dynamic adaptive Z-scores (CV-scaled tau), memory slope dM/dt, TimeToOOM (<300s)
 │   ├── trace_processor/            # Distributed Trace Telemetry-RAG
 │   │   └── processor.py            # TraceProcessor (DAG, caller->callee topology, timeout inversion, DFS leaf)
 │   ├── fusion/                     # Cross-Modal Fusion Engine
-│   │   └── engine.py               # FusionEngine (topological causal propagation, consensus multiplier)
+│   │   └── engine.py               # FusionEngine (topological propagation, multi-hypothesis likelihood, Bayesian consensus)
 │   ├── llm/                        # Structured LLM Generation Layer
-│   │   ├── client.py               # GeminiRCAClient (schema validation retry loop, strict eval gating)
-│   │   └── prompt.py               # Dynamic proportional prompt assembler (<2500 tokens) with topology
+│   │   ├── client.py               # GeminiRCAClient (schema validation, graceful Telemetry-RAG fallback)
+│   │   └── prompt.py               # Elastic dynamic token pool budgeting (<2500 tokens) with topology
 │   └── eval/                       # Academic Evaluation & Scoring
 │       ├── taxonomy.py             # Bidirectional mapping between RCAEval labels and FailureCategory
 │       └── metrics.py              # Top@1, Top@3, MRR calculation & transparent engine reporting
 │
-├── tests/                          # 35 Pytest unit & integration test suites
-│   ├── test_metrics_processor.py   # Z-score, MAD, memory slope, and cgroup TimeToOOM tests
+├── tests/                          # 38 Pytest unit & integration test suites
+│   ├── test_metrics_processor.py   # Adaptive Z-score, MAD, memory slope, and cgroup TimeToOOM tests
 │   ├── test_trace_processor.py     # DAG reconstruction, dependency graph, and timeout inversion tests
-│   ├── test_fusion_and_prompt.py   # Topological causal propagation, consensus multiplier, token budget
-│   ├── test_log_processor.py       # LogSage Drain3 diffing, probe filtering, asymmetric context tests
+│   ├── test_fusion_and_prompt.py   # Topological causal propagation, Bayesian consensus, elastic token budget
+│   ├── test_log_processor.py       # LogSage Drain3 diffing, probe filtering, dynamic stack continuation tests
 │   ├── test_evaluation_harness.py  # Taxonomy mapping, Top@1/Top@3/MRR scoring tests
 │   ├── test_llm_client_and_analyze.py # LLM client resilience and pipeline integration tests
 │   ├── test_rcaeval_adapter.py     # Adapter slicing, timestamp parsing, and quantization tests
@@ -220,7 +220,7 @@ cp .env.example .env
 ```
 
 ### 3. Run the Complete Test Suite
-Verify that all 35 tests pass:
+Verify that all 38 tests pass:
 ```bash
 uv run pytest tests/ -v
 ```

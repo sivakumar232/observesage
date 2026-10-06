@@ -45,7 +45,7 @@ def find_telemetry_file(run_id_or_path: str) -> Optional[str]:
 def print_rca_report(report: RCAReport, is_live_llm: bool):
     """Renders a beautiful Rich RCA report card to the terminal."""
     console.print("\n")
-    mode_tag = "[bold green]LIVE GEMINI 1.5 PRO[/bold green]" if is_live_llm else "[bold yellow]OFFLINE SIMULATED[/bold yellow]"
+    mode_tag = "[bold green]LIVE GEMINI DIAGNOSIS[/bold green]" if is_live_llm else "[bold yellow]OFFLINE TELEMETRY-RAG RETRIEVER CONSENSUS[/bold yellow]"
     console.print(Panel(
         f"[bold white]Root Cause Analysis Report[/bold white] — Run: [cyan]{report.run_id}[/cyan] ({mode_tag})",
         box=ROUNDED,
@@ -103,6 +103,7 @@ def main():
         help="Ablation diagnostic mode",
     )
     parser.add_argument("--save-report", action="store_true", default=True, help="Save report to JSON alongside telemetry")
+    parser.add_argument("--strict", action="store_true", help="Fail strictly if live LLM is requested but fails (no offline fallback)")
     args = parser.parse_args()
 
     target_ref = args.telemetry_file or args.run_id
@@ -138,19 +139,27 @@ def main():
     # Step 2: Generative LLM Diagnosis
     client = GeminiRCAClient()
     report = None
+    is_live_generation = False
     if client.is_configured:
-        console.print("[dim]2. Sending grounded Telemetry-RAG prompt to Gemini 1.5 Pro...[/dim]")
+        console.print("[dim]2. Sending grounded Telemetry-RAG prompt to Gemini...[/dim]")
         try:
             report = client.diagnose(
                 run_id=snapshot.run_id,
                 scenario=rag_ctx.scenario,
                 rag_prompt=rag_ctx.rag_prompt,
             )
+            is_live_generation = True
         except Exception as e:
+            if args.strict:
+                console.print(f"\n[bold red]Strict Mode Error:[/bold red] Live Gemini API call failed: {e}")
+                sys.exit(1)
             console.print(f"[yellow]Warning: Gemini API call failed ({e}). Falling back to Telemetry-RAG consensus.[/yellow]")
             report = None
 
     if report is None:
+        if args.strict and not client.is_configured:
+            console.print("\n[bold red]Strict Mode Error:[/bold red] GEMINI_API_KEY is not configured and --strict was specified.")
+            sys.exit(1)
         if not client.is_configured:
             console.print("[yellow]Notice: GEMINI_API_KEY not configured. Generating report directly from Telemetry-RAG retrieved consensus.[/yellow]")
         top_svc = rag_ctx.candidate_services[0] if rag_ctx.candidate_services else "unknown"
@@ -176,7 +185,7 @@ def main():
         )
 
     # Step 3: Display Report
-    print_rca_report(report, is_live_llm=client.is_configured)
+    print_rca_report(report, is_live_llm=is_live_generation)
 
     # Step 8: Save Report
     if args.save_report:

@@ -128,14 +128,14 @@ class RCAEvalAdapter:
             df = pd.read_parquet(path)
             for _, row in df.iterrows():
                 row_dict = row.to_dict()
-                case_id = str(row_dict.get("case_id", row_dict.get("id", "")))
+                case_id = str(row_dict.get("case", row_dict.get("case_id", row_dict.get("id", ""))))
                 if case_id:
                     registry[case_id] = row_dict
         elif path.suffix == ".csv":
             with open(path, mode="r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    case_id = row.get("case_id", row.get("id", ""))
+                    case_id = str(row.get("case", row.get("case_id", row.get("id", ""))))
                     if case_id:
                         registry[case_id] = row
         return registry
@@ -154,13 +154,9 @@ class RCAEvalAdapter:
         self, case_dir: Path, inject_time: float
     ) -> Tuple[Dict[str, List[str]], Dict[str, List[str]], List[Tuple[float, str]]]:
         """
-        Parses logs.csv into (baseline_logs, incident_logs, raw_timestamped_logs).
+        Parses logs (logs.parquet or logs.csv) into (baseline_logs, incident_logs, raw_timestamped_logs).
         Returns logs segmented by service and bucketable timestamp pairs.
         """
-        logs_file = case_dir / "logs.csv"
-        if not logs_file.exists():
-            return {}, {}, []
-
         baseline_start = inject_time - self.baseline_duration_sec
         incident_end = inject_time + self.incident_duration_sec
 
@@ -168,13 +164,44 @@ class RCAEvalAdapter:
         incident_logs: Dict[str, List[str]] = {}
         all_timestamped_logs: List[Tuple[float, str]] = []
 
-        with open(logs_file, mode="r", encoding="utf-8", errors="replace") as f:
+        logs_parquet = case_dir / "logs.parquet"
+        logs_csv = case_dir / "logs.csv"
+
+        if logs_parquet.exists() and pd is not None:
+            df = pd.read_parquet(logs_parquet)
+            time_col = detect_column(df.columns.tolist(), ["timestamp", "time", "datetime", "ts"])
+            service_col = detect_column(df.columns.tolist(), ["container_name", "service", "service_name", "pod", "app"])
+            msg_col = detect_column(df.columns.tolist(), ["message", "content", "log", "text", "msg", "body"])
+
+            if time_col and msg_col:
+                for _, row in df.iterrows():
+                    try:
+                        ts = parse_timestamp_value(row[time_col])
+                    except Exception:
+                        continue
+
+                    service = str(row[service_col]).strip() if service_col and pd.notna(row[service_col]) else "unknown_service"
+                    msg = str(row[msg_col]).strip()
+                    iso_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                    formatted_line = f"[{iso_ts}] {msg}"
+
+                    all_timestamped_logs.append((ts, service))
+                    if baseline_start <= ts < inject_time:
+                        baseline_logs.setdefault(service, []).append(formatted_line)
+                    elif inject_time <= ts <= incident_end:
+                        incident_logs.setdefault(service, []).append(formatted_line)
+            return baseline_logs, incident_logs, all_timestamped_logs
+
+        if not logs_csv.exists():
+            return {}, {}, []
+
+        with open(logs_csv, mode="r", encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
             if not reader.fieldnames:
                 return {}, {}, []
 
             time_col = detect_column(reader.fieldnames, ["time", "timestamp", "datetime", "date", "ts"])
-            service_col = detect_column(reader.fieldnames, ["service", "service_name", "pod", "app", "component"])
+            service_col = detect_column(reader.fieldnames, ["service", "service_name", "pod", "app", "component", "container_name"])
             msg_col = detect_column(reader.fieldnames, ["message", "content", "log", "text", "msg", "body"])
 
             if not time_col or not msg_col:
@@ -204,36 +231,48 @@ class RCAEvalAdapter:
         self, case_dir: Path, inject_time: float
     ) -> Tuple[List[MetricSeries], List[MetricSeries], List[Tuple[float, str]]]:
         """
-        Parses metrics.json into (baseline_metrics, incident_metrics, raw_timestamped_points).
-        Handles top-level metric dictionaries and service-nested metric trees.
+        Parses metrics (metrics.parquet or metrics.json) into (baseline_metrics, incident_metrics, raw_timestamped_points).
+        Handles wide-format Parquet tables and nested JSON dictionaries.
         """
-        metrics_file = case_dir / "metrics.json"
-        if not metrics_file.exists():
-            return [], [], []
-
         baseline_start = inject_time - self.baseline_duration_sec
         incident_end = inject_time + self.incident_duration_sec
 
-        with open(metrics_file, "r", encoding="utf-8") as f:
-            raw_metrics = json.load(f)
-
         flat_series: Dict[str, List[List[Any]]] = {}
-        # Unpack nested format: { service: { metric: [[ts, val], ...] } }
-        if isinstance(raw_metrics, dict):
-            for k1, v1 in raw_metrics.items():
-                if isinstance(v1, dict):
-                    for k2, v2 in v1.items():
-                        if isinstance(v2, list):
-                            flat_series[f"{k1}/{k2}"] = v2
-                elif isinstance(v1, list):
-                    flat_series[k1] = v1
-        elif isinstance(raw_metrics, list):
-            for item in raw_metrics:
-                if isinstance(item, dict):
-                    name = item.get("metric", item.get("metric_name", "unknown"))
-                    vals = item.get("values", item.get("data", []))
-                    if isinstance(vals, list):
-                        flat_series[name] = vals
+
+        metrics_parquet = case_dir / "metrics.parquet"
+        metrics_json = case_dir / "metrics.json"
+
+        if metrics_parquet.exists() and pd is not None:
+            df = pd.read_parquet(metrics_parquet)
+            time_col = "time" if "time" in df.columns else ("timestamp" if "timestamp" in df.columns else None)
+            if time_col:
+                times = df[time_col].values
+                for col in df.columns:
+                    if col == time_col:
+                        continue
+                    vals = df[col].values
+                    pts = [[times[i], vals[i]] for i in range(len(times)) if pd.notna(vals[i])]
+                    flat_series[col] = pts
+
+        elif metrics_json.exists():
+            with open(metrics_json, "r", encoding="utf-8") as f:
+                raw_metrics = json.load(f)
+
+            if isinstance(raw_metrics, dict):
+                for k1, v1 in raw_metrics.items():
+                    if isinstance(v1, dict):
+                        for k2, v2 in v1.items():
+                            if isinstance(v2, list):
+                                flat_series[f"{k1}/{k2}"] = v2
+                    elif isinstance(v1, list):
+                        flat_series[k1] = v1
+            elif isinstance(raw_metrics, list):
+                for item in raw_metrics:
+                    if isinstance(item, dict):
+                        name = item.get("metric", item.get("metric_name", "unknown"))
+                        vals = item.get("values", item.get("data", []))
+                        if isinstance(vals, list):
+                            flat_series[name] = vals
 
         baseline_metric_series: List[MetricSeries] = []
         incident_metric_series: List[MetricSeries] = []
@@ -284,93 +323,63 @@ class RCAEvalAdapter:
         self, case_dir: Path, inject_time: float
     ) -> Tuple[List[Trace], List[Trace], List[Tuple[float, str]]]:
         """
-        Parses traces.csv into (baseline_traces, incident_traces, raw_timestamped_spans).
+        Parses traces (traces.parquet or traces.csv) into (baseline_traces, incident_traces, raw_timestamped_spans).
         Assembles individual span rows into parent-child Trace DAG objects.
         """
-        traces_file = case_dir / "traces.csv"
-        if not traces_file.exists():
-            return [], [], []
-
         baseline_start = inject_time - self.baseline_duration_sec
         incident_end = inject_time + self.incident_duration_sec
 
-        # Raw spans grouped by trace_id: { trace_id: List[TraceSpan] }
         raw_traces_map: Dict[str, List[TraceSpan]] = {}
         all_timestamped_spans: List[Tuple[float, str]] = []
 
-        with open(traces_file, mode="r", encoding="utf-8", errors="replace") as f:
-            reader = csv.DictReader(f)
-            if not reader.fieldnames:
-                return [], [], []
+        traces_parquet = case_dir / "traces.parquet"
+        traces_csv = case_dir / "traces.csv"
 
-            time_col = detect_column(reader.fieldnames, ["time", "timestamp", "start_time", "startTime", "ts"])
-            trace_id_col = detect_column(reader.fieldnames, ["trace_id", "traceID", "traceId", "id"])
-            span_id_col = detect_column(reader.fieldnames, ["span_id", "spanID", "spanId"])
-            parent_id_col = detect_column(reader.fieldnames, ["parent_id", "parent_span_id", "parentSpanID", "parentId"])
-            service_col = detect_column(reader.fieldnames, ["service", "service_name", "serviceName", "app"])
-            op_col = detect_column(reader.fieldnames, ["operation", "operation_name", "operationName", "rpc", "method"])
-            duration_col = detect_column(reader.fieldnames, ["duration", "duration_ms", "duration_us", "latency"])
-            status_col = detect_column(reader.fieldnames, ["status", "status_code", "statusCode", "error", "has_error"])
+        if traces_parquet.exists() and pd is not None:
+            df = pd.read_parquet(traces_parquet)
+            # Sample to at most 10,000 spans to keep memory efficient if trace file is huge
+            if len(df) > 10000:
+                # Prioritize spans around injection window
+                df = df.iloc[-10000:]
 
-            if not time_col or not trace_id_col:
-                return [], [], []
+            time_col = detect_column(df.columns.tolist(), ["startTime", "startTimeMillis", "time", "timestamp", "ts"])
+            trace_id_col = detect_column(df.columns.tolist(), ["traceID", "trace_id", "id"])
+            span_id_col = detect_column(df.columns.tolist(), ["spanID", "span_id"])
+            parent_id_col = detect_column(df.columns.tolist(), ["parentSpanID", "parent_id", "parent_span_id"])
+            service_col = detect_column(df.columns.tolist(), ["serviceName", "service", "service_name", "app"])
+            op_col = detect_column(df.columns.tolist(), ["operationName", "methodName", "operation", "rpc"])
+            duration_col = detect_column(df.columns.tolist(), ["duration", "duration_ms", "duration_us"])
+            status_col = detect_column(df.columns.tolist(), ["statusCode", "status", "status_code", "error"])
 
-            row_idx = 0
-            for row in reader:
-                row_idx += 1
+            for _, row in df.iterrows():
                 try:
                     ts = parse_timestamp_value(row[time_col])
                 except Exception:
                     continue
 
-                trace_id = row[trace_id_col].strip()
-                span_id = (
-                    row[span_id_col].strip()
-                    if span_id_col and row.get(span_id_col)
-                    else f"{trace_id}_{row_idx}"
-                )
-                parent_id = (
-                    row[parent_id_col].strip()
-                    if parent_id_col and row.get(parent_id_col)
-                    else None
-                )
+                trace_id = str(row[trace_id_col]).strip() if trace_id_col and pd.notna(row[trace_id_col]) else "tr_unknown"
+                span_id = str(row[span_id_col]).strip() if span_id_col and pd.notna(row[span_id_col]) else f"{trace_id}_{len(all_timestamped_spans)}"
+                parent_id = str(row[parent_id_col]).strip() if parent_id_col and pd.notna(row[parent_id_col]) else None
                 if parent_id in ("", "none", "null", "None", "0"):
                     parent_id = None
 
-                service = (
-                    row[service_col].strip()
-                    if service_col and row.get(service_col)
-                    else "unknown_service"
-                )
-                operation = (
-                    row[op_col].strip()
-                    if op_col and row.get(op_col)
-                    else "unknown_op"
-                )
+                service = str(row[service_col]).strip() if service_col and pd.notna(row[service_col]) else "unknown_service"
+                operation = str(row[op_col]).strip() if op_col and pd.notna(row[op_col]) else "unknown_op"
 
-                # Duration normalization (to microseconds)
-                duration_us = 0
-                if duration_col and row.get(duration_col):
+                dur_us = 0
+                if duration_col and pd.notna(row[duration_col]):
                     try:
-                        dur_val = float(row[duration_col])
-                        # If duration is milliseconds, multiply by 1000
-                        if dur_val < 100000 and "ms" in duration_col.lower():
-                            duration_us = int(dur_val * 1000)
-                        else:
-                            duration_us = int(dur_val)
-                    except ValueError:
-                        duration_us = 0
+                        dur_us = int(float(row[duration_col]))
+                    except (ValueError, TypeError):
+                        dur_us = 0
 
-                # Error tagging
                 tags: List[Dict[str, Any]] = [
                     {"key": "service.name", "value": service},
                     {"key": "operation.name", "value": operation},
                 ]
-                is_error = False
-                if status_col and row.get(status_col):
+                if status_col and pd.notna(row[status_col]):
                     st = str(row[status_col]).strip().lower()
-                    if st in ["error", "500", "502", "503", "504", "true", "1", "fail", "failed"]:
-                        is_error = True
+                    if st in ["error", "500", "502", "503", "504", "true", "1", "fail"]:
                         tags.append({"key": "error", "value": True})
                     if st.isdigit():
                         tags.append({"key": "http.status_code", "value": int(st)})
@@ -386,12 +395,102 @@ class RCAEvalAdapter:
                     operationName=operation,
                     references=references,
                     startTime=start_time_us,
-                    duration=duration_us,
+                    duration=dur_us,
                     tags=tags,
                 )
-
                 raw_traces_map.setdefault(trace_id, []).append(span)
                 all_timestamped_spans.append((ts, service))
+
+        elif traces_csv.exists():
+            with open(traces_csv, mode="r", encoding="utf-8", errors="replace") as f:
+                reader = csv.DictReader(f)
+                if not reader.fieldnames:
+                    return [], [], []
+
+                time_col = detect_column(reader.fieldnames, ["time", "timestamp", "start_time", "startTime", "ts"])
+                trace_id_col = detect_column(reader.fieldnames, ["trace_id", "traceID", "traceId", "id"])
+                span_id_col = detect_column(reader.fieldnames, ["span_id", "spanID", "spanId"])
+                parent_id_col = detect_column(reader.fieldnames, ["parent_id", "parent_span_id", "parentSpanID", "parentId"])
+                service_col = detect_column(reader.fieldnames, ["service", "service_name", "serviceName", "app"])
+                op_col = detect_column(reader.fieldnames, ["operation", "operation_name", "operationName", "rpc", "method"])
+                duration_col = detect_column(reader.fieldnames, ["duration", "duration_ms", "duration_us", "latency"])
+                status_col = detect_column(reader.fieldnames, ["status", "status_code", "statusCode", "error", "has_error"])
+
+                if not time_col or not trace_id_col:
+                    return [], [], []
+
+                row_idx = 0
+                for row in reader:
+                    row_idx += 1
+                    try:
+                        ts = parse_timestamp_value(row[time_col])
+                    except Exception:
+                        continue
+
+                    trace_id = row[trace_id_col].strip()
+                    span_id = (
+                        row[span_id_col].strip()
+                        if span_id_col and row.get(span_id_col)
+                        else f"{trace_id}_{row_idx}"
+                    )
+                    parent_id = (
+                        row[parent_id_col].strip()
+                        if parent_id_col and row.get(parent_id_col)
+                        else None
+                    )
+                    if parent_id in ("", "none", "null", "None", "0"):
+                        parent_id = None
+
+                    service = (
+                        row[service_col].strip()
+                        if service_col and row.get(service_col)
+                        else "unknown_service"
+                    )
+                    operation = (
+                        row[op_col].strip()
+                        if op_col and row.get(op_col)
+                        else "unknown_op"
+                    )
+
+                    duration_us = 0
+                    if duration_col and row.get(duration_col):
+                        try:
+                            dur_val = float(row[duration_col])
+                            if dur_val < 100000 and "ms" in duration_col.lower():
+                                duration_us = int(dur_val * 1000)
+                            else:
+                                duration_us = int(dur_val)
+                        except ValueError:
+                            duration_us = 0
+
+                    tags: List[Dict[str, Any]] = [
+                        {"key": "service.name", "value": service},
+                        {"key": "operation.name", "value": operation},
+                    ]
+                    if status_col and row.get(status_col):
+                        st = str(row[status_col]).strip().lower()
+                        if st in ["error", "500", "502", "503", "504", "true", "1", "fail", "failed"]:
+                            tags.append({"key": "error", "value": True})
+                        if st.isdigit():
+                            tags.append({"key": "http.status_code", "value": int(st)})
+
+                    references = []
+                    if parent_id:
+                        references.append({"refType": "CHILD_OF", "traceID": trace_id, "spanID": parent_id})
+
+                    start_time_us = int(ts * 1e6)
+                    span = TraceSpan(
+                        traceID=trace_id,
+                        spanID=span_id,
+                        operationName=operation,
+                        references=references,
+                        startTime=start_time_us,
+                        duration=duration_us,
+                        tags=tags,
+                    )
+
+                    raw_traces_map.setdefault(trace_id, []).append(span)
+                    all_timestamped_spans.append((ts, service))
 
         baseline_traces: List[Trace] = []
         incident_traces: List[Trace] = []
@@ -399,7 +498,6 @@ class RCAEvalAdapter:
         for trace_id, spans in raw_traces_map.items():
             if not spans:
                 continue
-            # Determine trace start time
             min_ts_sec = min(s.startTime for s in spans) / 1e6
             trace_obj = Trace(traceID=trace_id, spans=spans)
 
@@ -480,22 +578,28 @@ class RCAEvalAdapter:
         """
         Retrieves ground truth labels for the case directory:
         1. Checks cases.parquet / cases.csv metadata registry.
-        2. Fallbacks to folder naming convention: {dataset}_{benchmark}_{service}_{fault}_{instance}
+        2. Fallbacks to folder naming convention: {dataset}_{service}_{fault}_{instance}
         """
         case_id = case_dir.name
+
+        # Auto-load registry from parent directory if not already loaded
+        if not self.cases_metadata:
+            parent_reg = case_dir.parent / "cases.parquet"
+            if parent_reg.exists():
+                self.cases_metadata = self.load_metadata_registry(parent_reg)
 
         # 1. Check loaded registry
         if case_id in self.cases_metadata:
             meta = self.cases_metadata[case_id]
             return {
                 "case_id": case_id,
-                "ground_truth_service": meta.get("service", meta.get("root_cause_service", "")),
-                "ground_truth_fault_type": meta.get("fault_type", meta.get("fault", "")),
-                "benchmark": meta.get("benchmark", meta.get("system", "")),
+                "ground_truth_service": meta.get("root_cause_service", meta.get("service", "")),
+                "ground_truth_fault_type": meta.get("fault", meta.get("fault_type", "")),
+                "benchmark": meta.get("system", meta.get("benchmark", "")),
                 "dataset": meta.get("dataset", ""),
             }
 
-        # 2. Parse from folder name: RE2_online-boutique_cartservice_mem_1
+        # 2. Parse from folder name: e.g. re2ob_checkoutservice_cpu_1 or RE2_online-boutique_cartservice_mem_1
         parts = case_id.split("_")
         gt_service = "unknown"
         gt_fault = "unknown"
@@ -503,10 +607,17 @@ class RCAEvalAdapter:
         benchmark = "unknown"
 
         if len(parts) >= 4:
-            dataset = parts[0]
-            benchmark = parts[1]
-            gt_service = parts[2]
-            gt_fault = parts[3].upper()
+            if parts[-1].isdigit() and len(parts) == 4:
+                # e.g., re2ob_checkoutservice_cpu_1
+                dataset = parts[0]
+                gt_service = parts[1]
+                gt_fault = parts[2].upper()
+            else:
+                # e.g., RE2_online-boutique_cartservice_mem_1
+                dataset = parts[0]
+                benchmark = parts[1]
+                gt_service = parts[2]
+                gt_fault = parts[3].upper()
         elif len(parts) == 3:
             benchmark = parts[0]
             gt_service = parts[1]

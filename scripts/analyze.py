@@ -189,6 +189,9 @@ def main():
         run_id=snapshot.run_id,
         scenario=scenario,
         user_prompt=user_prompt,
+        candidate_services=ranked_candidates,
+        hypothesized_category=failure_cat,
+        triangulation=triangulation,
         allow_heuristic=not client.is_configured,
     )
 

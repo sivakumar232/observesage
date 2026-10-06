@@ -23,6 +23,7 @@ dependencies = [
     "numpy>=1.26.0",
     "pyarrow>=25.0.1",
     "tiktoken>=0.14.0",
+    "huggingface-hub>=2.1.1",
 ]
 
 [dependency-groups]

@@ -105,6 +105,9 @@ def run_diagnosis_pipeline(
         run_id=snapshot.run_id,
         scenario=scenario,
         user_prompt=prompt,
+        candidate_services=ranked_candidates,
+        hypothesized_category=failure_cat,
+        triangulation=triangulation,
         allow_heuristic=allow_heur,
     )
 

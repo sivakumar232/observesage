@@ -21,6 +21,8 @@ dependencies = [
     "pandas>=2.2.0",
     "scipy>=1.13.0",
     "numpy>=1.26.0",
+    "pyarrow>=25.0.1",
+    "tiktoken>=0.14.0",
 ]
 
 [dependency-groups]

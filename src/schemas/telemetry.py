@@ -51,6 +51,16 @@ class Trace(BaseModel):
     warnings: Optional[List[str]] = None
 
 
+class TimeBucketSummary(BaseModel):
+    bucket_index: int
+    start_timestamp: float
+    end_timestamp: float
+    log_count: int = 0
+    metric_points_count: int = 0
+    span_count: int = 0
+    services_involved: List[str] = Field(default_factory=list)
+
+
 class TelemetryData(BaseModel):
     logs: Dict[str, List[str]] = Field(default_factory=dict)
     metrics: List[MetricSeries] = Field(default_factory=list)
@@ -62,6 +72,11 @@ class TelemetrySnapshot(BaseModel):
     metadata: Optional[PipelineRunMeta] = None
     captured_at: Optional[datetime] = None
     telemetry: TelemetryData
+    baseline: Optional[TelemetryData] = None
+    inject_time: Optional[float] = None
+    time_buckets: Optional[List[TimeBucketSummary]] = None
+    ground_truth_service: Optional[str] = None
+    ground_truth_fault_type: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -73,6 +88,11 @@ class TelemetrySnapshot(BaseModel):
                     "run_id": data.get("run_id", "unknown"),
                     "metadata": data.get("metadata"),
                     "captured_at": data.get("captured_at"),
+                    "inject_time": data.get("inject_time"),
+                    "time_buckets": data.get("time_buckets"),
+                    "ground_truth_service": data.get("ground_truth_service"),
+                    "ground_truth_fault_type": data.get("ground_truth_fault_type"),
+                    "baseline": data.get("baseline"),
                     "telemetry": {
                         "logs": data.get("logs", {}),
                         "metrics": data.get("metrics", []),
@@ -92,3 +112,15 @@ class TelemetrySnapshot(BaseModel):
     @property
     def traces(self) -> List[Trace]:
         return self.telemetry.traces
+
+    @property
+    def baseline_logs(self) -> Dict[str, List[str]]:
+        return self.baseline.logs if self.baseline else {}
+
+    @property
+    def baseline_metrics(self) -> List[MetricSeries]:
+        return self.baseline.metrics if self.baseline else []
+
+    @property
+    def baseline_traces(self) -> List[Trace]:
+        return self.baseline.traces if self.baseline else []

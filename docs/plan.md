@@ -113,3 +113,64 @@ flowchart LR
   │
 [DONE] Stage 5 ──► 30-case Benchmark (Ablation Matrix) + Interactive Dashboard
 ```
+
+flowchart TD
+    subgraph INGESTION["Stage 1: Benchmark Dataset Ingestion (rcaeval_adapter.py)"]
+        D1[("logs.parquet\n(171k raw lines)")]
+        D2[("metrics.parquet\n(72 PromQL series)")]
+        D3[("traces.parquet\n(391k Jaeger spans)")]
+        D4["inject_time.txt & cases.parquet"]
+        
+        D1 & D2 & D3 & D4 --> ADAPT["RCAEval Adapter\nTemporal Slicing"]
+        ADAPT -->|Window: T_inj - 600s to T_inj| BASE["Normal Baseline Telemetry"]
+        ADAPT -->|Window: T_inj to T_inj + 300s| INC["Active Incident Telemetry"]
+        BASE & INC --> SNAPSHOT[("TelemetrySnapshot\n(Standardized JSON)")]
+    end
+
+    subgraph RAG_RETRIEVER["Stage 2: Multi-Modal Telemetry-RAG Retriever (src/rag/retriever.py)"]
+        SNAPSHOT --> RETRIEVER["TelemetryRAGRetriever\nMulti-Modal Anomaly Extraction"]
+
+        subgraph RET_LOGS["1. Log Retriever (LogSage + Probe Filter)"]
+            RETRIEVER --> DRAIN["Drain3 Template Mining\nDiff incident vs. baseline templates"]
+            DRAIN --> KW["Keyword Filter\n('fail', 'error', 'kill', 'exception')"]
+            KW --> EXPAND["Asymmetric Context Window\nm=3 before, n=7 after (Probe-filtered)"]
+            EXPAND --> LOG_EV["LogEvidence\nNovel templates & clean snippets"]
+        end
+
+        subgraph RET_METRICS["2. Metric Retriever (Robust + Limit-Aware)"]
+            RETRIEVER --> VECT["Non-Parametric & Gaussian Stats\nMean μ, Std σ, Median, MAD"]
+            VECT --> ZSCORE["Robust Z-Score (MAD)\nNon-parametric anomaly detection"]
+            ZSCORE --> SLOPE["Memory Slope & TimeToOOM\ncgroup quota correlation"]
+            SLOPE --> METRIC_EV["MetricEvidence\nRanked metric anomaly alerts"]
+        end
+
+        subgraph RET_TRACES["3. Trace Retriever (Topology-Aware)"]
+            RETRIEVER --> DAG["Span DAG Reconstruction\nService Dependency Topology"]
+            DAG --> SELF["Self-Duration & Timeout Inversion\n504 / Deadline bottleneck detection"]
+            SELF --> DFS["DFS Traversal\nDeepest bottleneck leaf culprit"]
+            DFS --> TRACE_EV["TraceEvidence\nRoot-cause leaf service & Call Graph"]
+        end
+
+        LOG_EV & METRIC_EV & TRACE_EV --> FUSION["Topological Causal Engine & Consensus Multiplier"]
+        FUSION --> RANK["Topologically Ranked Candidates\nCaller damping & callee attribution"]
+        RANK --> SYNTH["Proportional Dynamic RAG Prompt Assembler\nBalanced Token Budget & Topology"]
+        SYNTH --> RAG_CTX[("RetrievedRAGContext\nGrounded Anomaly Evidence")]
+    end
+
+    subgraph GENERATION["Stage 3: Generative LLM Reasoning (src/llm/client.py)"]
+        RAG_CTX --> GEMINI["Gemini 1.5 Pro / Flash Client\nStructured Pydantic v2 Schema"]
+        GEMINI --> PROMPT_IN["System Prompt + Retrieved RAG Prompt"]
+        PROMPT_IN --> LLM_GEN["Gemini Inference\nTemperature: 0.1"]
+        LLM_GEN --> SCHEMA_VAL{"Pydantic v2\nSchema Validation"}
+        SCHEMA_VAL -->|Success| REPORT[("Validated RCAReport\n• Root Cause Service\n• Top-k Culprits\n• Failure Category\n• Remediation Steps")]
+        SCHEMA_VAL -->|Invalid| RETRY["Retry Loop with\nValidation Diagnostics"]
+        RETRY --> LLM_GEN
+    end
+
+    subgraph EVALUATION["Stage 4: Academic Benchmark Evaluation (scripts/evaluate_rcaeval.py)"]
+        REPORT --> EVAL_ENG["Academic Metric Scoring Engine\n(Transparent Live vs. Offline Reporting)"]
+        SNAPSHOT -->|Ground Truth: Metadata| EVAL_ENG
+        EVAL_ENG --> RES["Academic Evaluation Metrics:\n✔ Top@1 Accuracy\n✔ Top@3 Accuracy\n✔ MRR\n✔ Fault Classification Accuracy\n✔ Engine Transparency (Live LLM vs. Retriever)"]
+    end
+
+

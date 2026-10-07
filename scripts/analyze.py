@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 ObservaSage Root Cause Analysis (RCA) CLI.
-Analyzes failed CI/CD pipeline runs using LogSage or Multi-Signal Triangulation.
+Analyzes incident telemetry snapshots using Multi-Signal Triangulation (Logs, Metrics, Traces).
+Supports all 4 ablation modes: logs-only, logs-metrics, logs-traces, fusion.
 
 Usage:
-    uv run python scripts/analyze.py --telemetry-file data/runs/failed/run_..._telemetry.json
-    uv run python scripts/analyze.py --run-id run_...
+    uv run python scripts/analyze.py --telemetry-file data/runs/failed/run_..._telemetry.json --mode fusion
+    uv run python scripts/analyze.py --run-id run_... --mode logs-only
 """
 
 import argparse
@@ -20,9 +21,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from src.llm import GeminiRCAClient, build_log_only_prompt
-from src.log_processor import LogSageProcessor
-from src.schemas import RCAReport, TelemetrySnapshot
+from src.rag import TelemetryRAGRetriever
+from src.llm import GeminiRCAClient
+from src.schemas import RCAReport, TelemetrySnapshot, RemediationStep
 
 console = Console()
 
@@ -44,7 +45,7 @@ def find_telemetry_file(run_id_or_path: str) -> Optional[str]:
 def print_rca_report(report: RCAReport, is_live_llm: bool):
     """Renders a beautiful Rich RCA report card to the terminal."""
     console.print("\n")
-    mode_tag = "[bold green]LIVE GEMINI 1.5 PRO[/bold green]" if is_live_llm else "[bold yellow]OFFLINE SIMULATED[/bold yellow]"
+    mode_tag = "[bold green]LIVE GEMINI DIAGNOSIS[/bold green]" if is_live_llm else "[bold yellow]OFFLINE TELEMETRY-RAG RETRIEVER CONSENSUS[/bold yellow]"
     console.print(Panel(
         f"[bold white]Root Cause Analysis Report[/bold white] — Run: [cyan]{report.run_id}[/cyan] ({mode_tag})",
         box=ROUNDED,
@@ -57,6 +58,9 @@ def print_rca_report(report: RCAReport, is_live_llm: bool):
     table.add_column("Value", style="white")
 
     table.add_row("Root Cause Service", f"[bold red]{report.root_cause_service}[/bold red]")
+    if report.culprit_services:
+        cand_str = " -> ".join([f"[yellow]{s}[/yellow]" for s in report.culprit_services[:3]])
+        table.add_row("Ranked Culprits (Top-k)", cand_str)
     table.add_row("Failure Category", f"[bold magenta]{report.failure_category.value}[/bold magenta]")
     table.add_row("Confidence Score", f"[bold green]{report.confidence_score * 100:.1f}%[/bold green]")
     table.add_row("Primary Signal", f"[yellow]{report.evidence_triangulation.primary_signal}[/yellow]")
@@ -91,13 +95,19 @@ def main():
     parser = argparse.ArgumentParser(description="ObservaSage Automated Root Cause Analysis")
     parser.add_argument("--telemetry-file", type=str, help="Path to telemetry JSON file")
     parser.add_argument("--run-id", type=str, help="Run ID of the failed run")
-    parser.add_argument("--mode", type=str, default="logs-only", choices=["logs-only", "fusion"], help="Diagnostic mode")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="fusion",
+        choices=["logs-only", "logs-metrics", "logs-traces", "fusion"],
+        help="Ablation diagnostic mode",
+    )
     parser.add_argument("--save-report", action="store_true", default=True, help="Save report to JSON alongside telemetry")
+    parser.add_argument("--strict", action="store_true", help="Fail strictly if live LLM is requested but fails (no offline fallback)")
     args = parser.parse_args()
 
     target_ref = args.telemetry_file or args.run_id
     if not target_ref:
-        # Pick the most recent failed telemetry run
         candidates = sorted(glob.glob("data/runs/failed/*_telemetry.json"), reverse=True)
         if candidates:
             target_ref = candidates[0]
@@ -111,40 +121,76 @@ def main():
         console.print(f"[bold red]Error:[/bold red] Telemetry file not found for: {target_ref}")
         sys.exit(1)
 
-    console.print(f"[bold cyan]▶ Loading Telemetry Snapshot:[/bold cyan] {filepath}")
-    with open(filepath, "r") as f:
+    console.print(f"[bold cyan]▶ Loading Telemetry Snapshot:[/bold cyan] {filepath} (Mode: [bold green]{args.mode}[/bold green])")
+    with open(filepath, "r", encoding="utf-8") as f:
         data = json.load(f)
         snapshot = TelemetrySnapshot(**data)
 
     scenario = snapshot.metadata.scenario if snapshot.metadata else "unknown"
 
-    # Step 1: Run LogSage Log Preprocessing
-    console.print("[dim]Running LogSage Drain3 template mining and asymmetric context expansion...[/dim]")
-    log_processor = LogSageProcessor()
-    log_processor.load_or_train_baselines()
-    log_evidences = log_processor.process_all_logs(snapshot.logs)
+    # Step 1: Multi-Modal Telemetry-RAG Retrieval
+    console.print("[dim]1. Running Telemetry-RAG multi-modal retrieval across Logs, Metrics, and Traces...[/dim]")
+    retriever = TelemetryRAGRetriever()
+    rag_ctx = retriever.retrieve(snapshot, mode=args.mode)
+    console.print(f"✔ Retrieved RAG context ({rag_ctx.token_count} BPE tokens).")
+    if rag_ctx.candidate_services:
+        console.print(f"✔ Top retrieved culprit candidate: [bold cyan]{rag_ctx.candidate_services[0]}[/bold cyan] (Category: {rag_ctx.hypothesized_category.value})")
 
-    total_novel = sum(ev.novel_templates_count for ev in log_evidences.values())
-    total_snippets = sum(len(ev.snippets) for ev in log_evidences.values())
-    total_tokens = sum(ev.estimated_tokens for ev in log_evidences.values())
-
-    console.print(f"✔ Extracted [bold green]{total_snippets}[/bold green] error snippets across [cyan]{len(log_evidences)}[/cyan] services ({total_novel} novel templates, ~{total_tokens} tokens).")
-
-    # Step 2: Build Diagnostic Prompt
-    user_prompt = build_log_only_prompt(snapshot.run_id, scenario, log_evidences)
-
-    # Step 3: Invoke LLM Client
-    console.print("[dim]Querying Gemini 1.5 Pro diagnostic engine...[/dim]")
+    # Step 2: Generative LLM Diagnosis
     client = GeminiRCAClient()
-    report = client.diagnose(run_id=snapshot.run_id, scenario=scenario, user_prompt=user_prompt)
+    report = None
+    is_live_generation = False
+    if client.is_configured:
+        console.print("[dim]2. Sending grounded Telemetry-RAG prompt to Gemini...[/dim]")
+        try:
+            report = client.diagnose(
+                run_id=snapshot.run_id,
+                scenario=rag_ctx.scenario,
+                rag_prompt=rag_ctx.rag_prompt,
+            )
+            is_live_generation = True
+        except Exception as e:
+            if args.strict:
+                console.print(f"\n[bold red]Strict Mode Error:[/bold red] Live Gemini API call failed: {e}")
+                sys.exit(1)
+            console.print(f"[yellow]Warning: Gemini API call failed ({e}). Falling back to Telemetry-RAG consensus.[/yellow]")
+            report = None
 
-    # Step 4: Display Report
-    print_rca_report(report, is_live_llm=client.is_configured)
+    if report is None:
+        if args.strict and not client.is_configured:
+            console.print("\n[bold red]Strict Mode Error:[/bold red] GEMINI_API_KEY is not configured and --strict was specified.")
+            sys.exit(1)
+        if not client.is_configured:
+            console.print("[yellow]Notice: GEMINI_API_KEY not configured. Generating report directly from Telemetry-RAG retrieved consensus.[/yellow]")
+        top_svc = rag_ctx.candidate_services[0] if rag_ctx.candidate_services else "unknown"
+        report = RCAReport(
+            run_id=snapshot.run_id,
+            scenario=rag_ctx.scenario,
+            root_cause_service=top_svc,
+            culprit_services=rag_ctx.candidate_services[:3] if rag_ctx.candidate_services else [top_svc],
+            failure_category=rag_ctx.hypothesized_category,
+            confidence_score=rag_ctx.confidence,
+            root_cause_summary=f"Telemetry-RAG localized root cause to '{top_svc}' failing under {rag_ctx.hypothesized_category.value}.",
+            evidence_triangulation=rag_ctx.triangulation,
+            remediation_steps=[
+                RemediationStep(
+                    action=f"Inspect and scale compute / network resources for {top_svc}",
+                    target_service=top_svc,
+                    command_or_config=f"docker update --cpus=2.0 {top_svc}",
+                    expected_impact=f"Relieves resource pressure on {top_svc}",
+                )
+            ],
+            prompt_tokens_used=rag_ctx.token_count,
+            total_tokens_used=rag_ctx.token_count + 120,
+        )
 
-    # Step 5: Save Report
+    # Step 3: Display Report
+    print_rca_report(report, is_live_llm=is_live_generation)
+
+    # Step 8: Save Report
     if args.save_report:
         out_path = filepath.replace("_telemetry.json", "_rca.json")
-        with open(out_path, "w") as f:
+        with open(out_path, "w", encoding="utf-8") as f:
             f.write(report.model_dump_json(indent=2))
         console.print(f"[dim]RCA Report saved to: {out_path}[/dim]\n")
 

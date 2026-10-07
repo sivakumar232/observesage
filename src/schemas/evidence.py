@@ -2,7 +2,7 @@
 Pydantic schemas for extracted telemetry evidence across logs, metrics, and traces.
 """
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -33,9 +33,12 @@ class MetricAlert(BaseModel):
     baseline_mean: float
     baseline_std: float
     z_score: float
+    robust_z_score: Optional[float] = Field(default=None, description="Non-parametric MAD-based robust z-score")
+    adaptive_threshold: Optional[float] = Field(default=None, description="Dynamically calibrated baseline anomaly threshold")
     is_threshold_exceeded: bool = False
     is_oom_risk: bool = False
     slope_dM_dt: Optional[float] = Field(default=None, description="Memory consumption rate of change (bytes/sec)")
+    time_to_oom_seconds: Optional[float] = Field(default=None, description="Estimated seconds until cgroup memory limit breach")
     severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "LOW"
     description: str
 
@@ -70,6 +73,8 @@ class TraceEvidence(BaseModel):
     root_service: Optional[str] = None
     culprit_service: Optional[str] = None
     culprit_span: Optional[TraceSpanEvidence] = None
+    service_dependency_graph: Dict[str, List[str]] = Field(default_factory=dict, description="Adjacency list of caller -> callee dependencies")
     call_hierarchy_summary: str = ""
     formatted_prompt: str = ""
     estimated_tokens: int = 0
+

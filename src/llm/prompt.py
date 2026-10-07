@@ -1,46 +1,140 @@
 """
-Prompt construction for ObservaSage Gemini Root Cause Analysis.
-Strictly budgets prompt tokens under 2,500 tokens.
+Prompt construction and token budgeting for ObservaSage Gemini Root Cause Analysis.
+Strictly budgets prompt tokens under 2,500 BPE tokens using exact tokenizer.
+Supports 4-way ablation modes: logs-only, logs-metrics, logs-traces, fusion.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Literal, Optional
+
+try:
+    import tiktoken
+
+    _ENC = tiktoken.get_encoding("cl100k_base")
+except Exception:
+    _ENC = None
+
 from src.schemas.evidence import LogEvidence, MetricEvidence, TraceEvidence
 
 
-SYSTEM_PROMPT = """You are ObservaSage, an expert AI Root Cause Analysis (RCA) diagnostic engineer for microservices and CI/CD pipelines.
-Your task is to analyze the provided multi-signal telemetry (Logs, Metrics, Traces) from a failed pipeline run and determine the exact technical root cause.
+SYSTEM_PROMPT = """You are ObservaSage, an expert AI Root Cause Analysis (RCA) diagnostic engineer for microservices and distributed systems.
+Your task is to analyze the provided multi-signal telemetry (Logs, Metrics, Traces) from an incident and determine the exact technical root cause.
 
 Diagnostic Rules:
-1. Identify the guilty microservice (the actual root cause, not just upstream services that crashed as a consequence).
-2. Classify the failure into exactly ONE of the following categories:
+1. Identify the guilty microservice (the actual root cause, not upstream callers that failed as a consequence).
+2. Rank the top suspected culprit services in `remediation_steps` or summary if ambiguous.
+3. Classify the failure into exactly ONE of the following categories:
    - "EC-1: OOM / Resource Exhaustion" (Memory limits breached, high memory slope, process killed)
    - "EC-2: Flaky / Intermittent Latency" (Network packet loss, high latency, CPU throttling)
    - "EC-3: Cascading Service Crash" (A dependency died, causing callers to fail with connection refused or timeouts)
-   - "EC-4: Silent Data Corruption" (No fatal error logs, but wrong data returned, e.g. empty cart or corrupted total)
+   - "EC-4: Silent Data Corruption" (No fatal error logs, but wrong data returned)
    - "EC-5: Infrastructure Drift / Network Partition" (Host unreachable, network disconnect, DNS failure)
    - "CODE_BUG: Application Exception / Logic Error" (Unhandled application crash, null pointer, syntax error)
    - "UNKNOWN: Unclassified Failure"
-3. Assign a realistic confidence score between 0.0 and 1.0.
-4. Triangulate the evidence: explain what each signal (Logs, Metrics, Traces) proved.
-5. Provide actionable remediation steps to fix the issue.
+4. Assign a realistic confidence score between 0.0 and 1.0.
+5. Triangulate the evidence: explain what each signal (Logs, Metrics, Traces) proved.
+6. Provide actionable remediation steps to fix the issue.
 
 You MUST respond strictly in the requested JSON schema.
 """
 
 
+def count_bpe_tokens(text: str) -> int:
+    """Exact BPE token count using cl100k_base encoding, with fallback."""
+    if _ENC is not None:
+        return len(_ENC.encode(text))
+    # Fallback to conservative estimate for technical telemetry (~3 chars per token)
+    return max(1, len(text) // 3)
+
+
+def truncate_to_tokens(text: str, max_tokens: int) -> str:
+    """Truncates text to ensure it stays within max_tokens."""
+    if count_bpe_tokens(text) <= max_tokens:
+        return text
+
+    if _ENC is not None:
+        tokens = _ENC.encode(text)
+        truncated_tokens = tokens[: max_tokens - 10]
+        return _ENC.decode(truncated_tokens) + "\n...[truncated for token budget]"
+
+    # Fallback character truncation
+    char_limit = max(50, max_tokens * 3)
+    return text[:char_limit] + "\n...[truncated for token budget]"
+
+
+def build_multimodal_prompt(
+    run_id: str,
+    log_evidences: Dict[str, LogEvidence],
+    metric_evidence: Optional[MetricEvidence] = None,
+    trace_evidence: Optional[TraceEvidence] = None,
+    mode: Literal["logs-only", "logs-metrics", "logs-traces", "fusion"] = "fusion",
+    max_total_tokens: int = 2400,
+) -> str:
+    """
+    Constructs an elastic, budgeted prompt for LLM diagnosis.
+    Dynamically pools tokens across active signals based on real information density
+    (unused metric budget rolls over to traces and logs).
+    Injects observed service call topology for causal reasoning.
+    """
+    sections: List[str] = [f"### Incident Reference ID: {run_id}"]
+
+    include_traces = mode in ["logs-traces", "fusion"] and trace_evidence is not None
+    include_metrics = mode in ["logs-metrics", "fusion"] and metric_evidence is not None
+
+    # Base budget envelope calculation
+    fixed_overhead = 120  # headers, instructions
+    elastic_pool = max(400, max_total_tokens - fixed_overhead)
+
+    # 1. Traces Section (includes service call topology if available)
+    if include_traces and trace_evidence:
+        trace_parts: List[str] = []
+        if trace_evidence.service_dependency_graph:
+            topo_lines = ["### Service Dependency Graph (Caller -> Callees):"]
+            for caller, callees in sorted(trace_evidence.service_dependency_graph.items()):
+                topo_lines.append(f"- {caller} ➔ [{', '.join(callees)}]")
+            trace_parts.append("\n".join(topo_lines))
+
+        if trace_evidence.formatted_prompt:
+            trace_parts.append(trace_evidence.formatted_prompt)
+
+        if trace_parts:
+            combined_trace = "\n\n".join(trace_parts)
+            needed_trace_tokens = count_bpe_tokens(combined_trace)
+            dynamic_trace_cap = min(needed_trace_tokens, int(elastic_pool * 0.45))
+            sections.append(truncate_to_tokens(combined_trace, max(350, dynamic_trace_cap)))
+
+    # 2. Metrics Section (takes actual needed tokens or up to dynamic cap)
+    if include_metrics and metric_evidence and metric_evidence.formatted_prompt:
+        needed_metric_tokens = count_bpe_tokens(metric_evidence.formatted_prompt)
+        dynamic_metric_cap = min(needed_metric_tokens, int(elastic_pool * 0.35))
+        sections.append(truncate_to_tokens(metric_evidence.formatted_prompt, max(250, dynamic_metric_cap)))
+
+    # 3. Logs Section (dynamically absorbs all remaining budget)
+    log_blocks: List[str] = []
+    if log_evidences:
+        for svc, ev in sorted(log_evidences.items(), key=lambda item: len(item[1].snippets), reverse=True):
+            if ev.formatted_prompt:
+                log_blocks.append(ev.formatted_prompt)
+
+    if log_blocks:
+        combined_logs = "\n\n".join(log_blocks)
+        current_used = count_bpe_tokens("\n\n".join(sections))
+        remaining_budget = max(200, max_total_tokens - current_used - 80)
+        budgeted_logs = truncate_to_tokens(combined_logs, remaining_budget)
+        sections.append("### Extracted Log Evidence (Drain3 Novel Templates & Asymmetric Context):\n" + budgeted_logs)
+
+    sections.append(
+        "\nAnalyze the telemetry evidence above, triangulate signals across modalities using the dependency topology, "
+        "and produce the structured Root Cause Analysis report."
+    )
+
+    full_prompt = "\n\n".join(sections)
+    # Final safeguard check
+    if count_bpe_tokens(full_prompt) > max_total_tokens:
+        full_prompt = truncate_to_tokens(full_prompt, max_total_tokens)
+
+    return full_prompt
+
+
 def build_log_only_prompt(run_id: str, scenario: str, log_evidences: Dict[str, LogEvidence]) -> str:
-    """
-    Constructs a concise, formatted prompt for LogSage log-only baseline analysis.
-    """
-    sections = [
-        f"### Target Run: {run_id}",
-        f"### Scenario: {scenario}",
-        "### Extracted Log Evidence (Preprocessed with Drain3 & LogSage Asymmetric Context):",
-    ]
-
-    for service, ev in log_evidences.items():
-        if ev.formatted_prompt:
-            sections.append(ev.formatted_prompt)
-
-    sections.append("\nAnalyze the extracted logs above and produce the structured RCA diagnosis.")
-    return "\n\n".join(sections)
+    """Backward-compatible wrapper for log-only prompt."""
+    return build_multimodal_prompt(run_id=run_id, log_evidences=log_evidences, mode="logs-only")

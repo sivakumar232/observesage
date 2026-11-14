@@ -174,7 +174,7 @@ def test_cgroup_memory_limit_time_to_oom():
 
     evidence = processor.process(incident)
     assert evidence.has_oom_alert is True
-    mem_alert = [a for a in evidence.alerts if a.metric_name == "cartservice/container_memory_bytes"][0]
+    mem_alert = next(a for a in evidence.alerts if a.metric_name == "cartservice/container_memory_bytes")
     assert mem_alert.is_oom_risk is True
     assert mem_alert.time_to_oom_seconds is not None
     assert mem_alert.time_to_oom_seconds < 300.0

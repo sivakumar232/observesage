@@ -14,21 +14,20 @@ import glob
 import json
 import os
 import sys
-from typing import Optional
-from pathlib import Path
+
 from rich.box import ROUNDED
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from src.rag import TelemetryRAGRetriever
 from src.llm import GeminiRCAClient
-from src.schemas import RCAReport, TelemetrySnapshot, RemediationStep
+from src.rag import TelemetryRAGRetriever
+from src.schemas import RCAReport, RemediationStep, TelemetrySnapshot
 
 console = Console()
 
 
-def find_telemetry_file(run_id_or_path: str) -> Optional[str]:
+def find_telemetry_file(run_id_or_path: str) -> str | None:
     """Finds telemetry file by exact path or run_id."""
     if os.path.isfile(run_id_or_path):
         return run_id_or_path
@@ -104,6 +103,7 @@ def main():
     )
     parser.add_argument("--save-report", action="store_true", default=True, help="Save report to JSON alongside telemetry")
     parser.add_argument("--strict", action="store_true", help="Fail strictly if live LLM is requested but fails (no offline fallback)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print verbose internal structures (raw data, RAG prompt, LLM response)")
     args = parser.parse_args()
 
     target_ref = args.telemetry_file or args.run_id
@@ -128,6 +128,12 @@ def main():
 
     scenario = snapshot.metadata.scenario if snapshot.metadata else "unknown"
 
+    if args.verbose:
+        console.print("\n[bold magenta]--- VERBOSE: Raw Telemetry Snapshot Summary ---[/bold magenta]")
+        console.print(f"Total Incident Logs: {len(snapshot.logs)}")
+        console.print(f"Total Incident Metric Series: {len(snapshot.metrics)}")
+        console.print(f"Total Incident Traces: {len(snapshot.traces)}")
+
     # Step 1: Multi-Modal Telemetry-RAG Retrieval
     console.print("[dim]1. Running Telemetry-RAG multi-modal retrieval across Logs, Metrics, and Traces...[/dim]")
     retriever = TelemetryRAGRetriever()
@@ -135,6 +141,17 @@ def main():
     console.print(f"✔ Retrieved RAG context ({rag_ctx.token_count} BPE tokens).")
     if rag_ctx.candidate_services:
         console.print(f"✔ Top retrieved culprit candidate: [bold cyan]{rag_ctx.candidate_services[0]}[/bold cyan] (Category: {rag_ctx.hypothesized_category.value})")
+
+    if args.verbose:
+        console.print("\n[bold magenta]--- VERBOSE: Retrieved Failure-Related Evidences ---[/bold magenta]")
+        console.print("[cyan]Log Evidences:[/cyan]")
+        console.print(rag_ctx.log_evidences)
+        console.print("\n[cyan]Metric Evidence:[/cyan]")
+        console.print(rag_ctx.metric_evidence)
+        console.print("\n[cyan]Trace Evidence:[/cyan]")
+        console.print(rag_ctx.trace_evidence)
+        console.print("\n[bold magenta]--- VERBOSE: Data Sent to LLM (Prompt) ---[/bold magenta]")
+        console.print(Panel(rag_ctx.rag_prompt, title="Telemetry-RAG Prompt", border_style="magenta"))
 
     # Step 2: Generative LLM Diagnosis
     client = GeminiRCAClient()
@@ -155,6 +172,10 @@ def main():
                 sys.exit(1)
             console.print(f"[yellow]Warning: Gemini API call failed ({e}). Falling back to Telemetry-RAG consensus.[/yellow]")
             report = None
+            
+        if args.verbose and report:
+            console.print("\n[bold magenta]--- VERBOSE: Data Received from LLM (Parsed RCAReport) ---[/bold magenta]")
+            console.print(report.model_dump_json(indent=2))
 
     if report is None:
         if args.strict and not client.is_configured:

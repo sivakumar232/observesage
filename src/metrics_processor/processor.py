@@ -6,7 +6,7 @@ across time-series telemetry with in-sample baseline calibration.
 
 import math
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.schemas.evidence import MetricAlert, MetricEvidence
 from src.schemas.telemetry import MetricSeries
@@ -47,7 +47,7 @@ def extract_service_from_metric(metric_name: str, query: str = "") -> str:
     return "system"
 
 
-def compute_linear_slope(points: List[Dict[str, Any]]) -> float:
+def compute_linear_slope(points: list[dict[str, Any]]) -> float:
     """
     Computes linear regression rate of change (dy/dt) in units per second.
     """
@@ -84,7 +84,7 @@ def compute_linear_slope(points: List[Dict[str, Any]]) -> float:
     return numerator / denominator
 
 
-def compute_mean_and_std(values: List[float]) -> Tuple[float, float]:
+def compute_mean_and_std(values: list[float]) -> tuple[float, float]:
     """Computes sample mean and standard deviation."""
     if not values:
         return 0.0, 0.0
@@ -96,7 +96,7 @@ def compute_mean_and_std(values: List[float]) -> Tuple[float, float]:
     return mean, math.sqrt(variance)
 
 
-def compute_median_and_mad(values: List[float]) -> Tuple[float, float]:
+def compute_median_and_mad(values: list[float]) -> tuple[float, float]:
     """
     Computes sample median and Median Absolute Deviation (MAD) for robust,
     non-parametric anomaly detection on skewed metrics (e.g. latency, error rates).
@@ -151,8 +151,8 @@ class MetricsProcessor:
 
     def process(
         self,
-        incident_metrics: List[MetricSeries],
-        baseline_metrics: Optional[List[MetricSeries]] = None,
+        incident_metrics: list[MetricSeries],
+        baseline_metrics: list[MetricSeries] | None = None,
     ) -> MetricEvidence:
         """
         Evaluates incident metrics against baseline metrics (or self-derived baseline).
@@ -161,7 +161,7 @@ class MetricsProcessor:
             return MetricEvidence(total_metrics_evaluated=0)
 
         # 1. Build baseline reference map: { metric_name: (mean, std, median, mad) }
-        baseline_stats: Dict[str, Tuple[float, float, float, float]] = {}
+        baseline_stats: dict[str, tuple[float, float, float, float]] = {}
         if baseline_metrics:
             for b_series in baseline_metrics:
                 vals = [float(p.get("value", 0.0)) for p in b_series.data if "value" in p]
@@ -171,7 +171,7 @@ class MetricsProcessor:
                     baseline_stats[b_series.metric_name] = (mean_val, std_val, med_val, mad_val)
 
         # 2. Extract service-level cgroup memory limits if present in telemetry
-        service_memory_limits: Dict[str, float] = {}
+        service_memory_limits: dict[str, float] = {}
         all_series = (baseline_metrics or []) + incident_metrics
         for s in all_series:
             name_low = s.metric_name.lower()
@@ -184,7 +184,7 @@ class MetricsProcessor:
                 except (ValueError, TypeError):
                     pass
 
-        alerts: List[MetricAlert] = []
+        alerts: list[MetricAlert] = []
         has_oom_alert = False
         has_latency_anomaly = False
 
@@ -326,7 +326,7 @@ class MetricsProcessor:
             estimated_tokens=est_tokens,
         )
 
-    def _format_prompt(self, alerts: List[MetricAlert]) -> str:
+    def _format_prompt(self, alerts: list[MetricAlert]) -> str:
         if not alerts:
             return "No metric anomalies detected (Z-scores within normal distribution)."
 

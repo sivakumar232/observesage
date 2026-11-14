@@ -23,7 +23,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich.box import ROUNDED
 from rich.console import Console
@@ -37,8 +37,8 @@ from src.eval import (
     format_ablation_table,
     score_single_case,
 )
-from src.rag import TelemetryRAGRetriever
 from src.llm import GeminiRCAClient
+from src.rag import TelemetryRAGRetriever
 from src.schemas import RCAReport, TelemetrySnapshot
 
 console = Console()
@@ -108,7 +108,7 @@ def main():
     ))
 
     # 1. Discover target cases
-    target_snapshots: List[Path] = []
+    target_snapshots: list[Path] = []
     if args.raw_cases_dir and os.path.exists(args.raw_cases_dir):
         adapter = RCAEvalAdapter()
         console.print(f"[dim]Scanning raw cases in: {args.raw_cases_dir}...[/dim]")
@@ -132,7 +132,7 @@ def main():
     console.print(f"Loaded [bold green]{len(target_snapshots)}[/bold green] benchmark cases to evaluate in mode: [cyan]{args.mode}[/cyan]\n")
 
     # 2. Evaluation Loop
-    scores: List[CaseScore] = []
+    scores: list[CaseScore] = []
     for idx, snap_path in enumerate(target_snapshots, start=1):
         with open(snap_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -159,7 +159,7 @@ def main():
             )
             duration_ms = (time.time() - start_t) * 1000.0
 
-            engine_name = "LIVE_LLM" if client.is_configured else "OFFLINE_RETRIEVER_HEURISTIC"
+            engine_name = "LIVE_LLM" if client.is_configured else "TELEMETRY_RAG_LOCAL"
             score = score_single_case(
                 case_id=snapshot.run_id,
                 ground_truth_service=gt_service,
@@ -169,6 +169,23 @@ def main():
                 engine_type=engine_name,
             )
             scores.append(score)
+
+            # Persist canonical CaseAnalysisArtifact alongside CSV output
+            from src.pipeline.orchestrator import ObservaSagePipeline
+            from src.schemas.artifact import StageTiming
+
+            rag_ctx = TelemetryRAGRetriever().retrieve(snapshot, mode=args.mode)
+            artifact = ObservaSagePipeline.build_artifact(
+                case_id=snapshot.run_id,
+                mode=args.mode,
+                snapshot=snapshot,
+                rag_ctx=rag_ctx,
+                report=report,
+                score=score,
+                stage_timings=[StageTiming(stage="evaluate", status="ok", duration_ms=round(duration_ms, 2))],
+                source="live",
+            )
+            ObservaSagePipeline.save_artifact(artifact, args.output_csv.parent)
 
             status_glyph = "[bold green]✔ HIT[/bold green]" if score.top1_hit else "[bold red]✘ MISS[/bold red]"
             console.print(
@@ -190,7 +207,7 @@ def main():
     summary_table.add_column("Metric", style="bold cyan")
     summary_table.add_column("Score", style="bold green")
 
-    summary_table.add_row("Evaluation Engine", "LIVE_LLM (Gemini)" if client.is_configured else "OFFLINE_RETRIEVER_HEURISTIC")
+    summary_table.add_row("Evaluation Engine", "LIVE_LLM (Gemini)" if client.is_configured else "TELEMETRY_RAG_LOCAL")
     summary_table.add_row("Total Evaluated Cases", str(summary["total_cases"]))
     summary_table.add_row("Top@1 Accuracy", f"{summary['overall_top1']:.2%}")
     summary_table.add_row("Top@3 Accuracy", f"{summary['overall_top3']:.2%}")

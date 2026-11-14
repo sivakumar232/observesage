@@ -1,0 +1,91 @@
+case_id,ground_truth_service,predicted_service,ranked_candidates,ground_truth_fault,predicted_category,top1_hit,top3_hit,mrr,fault_match,confidence,prompt_tokens,duration_ms,engine_type
+re2ob_checkoutservice_cpu_1,checkoutservice,currencyservice,currencyservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,765,8685.44,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_cpu_2,checkoutservice,redis,redis;checkoutservice;adservice,cpu,CODE_BUG: Application Exception / Logic Error,False,True,0.5,False,0.75,1820,7791.81,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_cpu_3,checkoutservice,recommendationservice,recommendationservice;frontendservice,cpu,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2060,9008.55,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_delay_1,checkoutservice,recommendationservice,recommendationservice;checkoutservice,delay,CODE_BUG: Application Exception / Logic Error,False,True,0.5,False,0.75,2060,8947.25,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_delay_2,checkoutservice,checkoutservice,checkoutservice,delay,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.75,695,8571.75,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_delay_3,checkoutservice,checkoutservice,checkoutservice,delay,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.6,630,8826.12,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_disk_1,checkoutservice,currencyservice,currencyservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.55,541,8612.68,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_disk_2,checkoutservice,checkoutservice,checkoutservice,disk,EC-2: Flaky / Intermittent Latency,True,True,1.0,False,0.6,753,8835.14,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_disk_3,checkoutservice,frontendservice,frontendservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,548,8614.82,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_loss_1,checkoutservice,frontend,frontend;checkoutservice,loss,CODE_BUG: Application Exception / Logic Error,False,True,0.5,False,0.85,2060,8685.17,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_loss_2,checkoutservice,checkoutservice,checkoutservice,loss,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.6,609,8755.68,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_loss_3,checkoutservice,recommendationservice,recommendationservice;checkoutservice,loss,CODE_BUG: Application Exception / Logic Error,False,True,0.5,False,0.75,2060,8713.65,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_mem_1,checkoutservice,checkoutservice,checkoutservice,mem,EC-2: Flaky / Intermittent Latency,True,True,1.0,False,0.6,697,8689.29,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_mem_2,checkoutservice,recommendationservice,recommendationservice;frontendservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8492.39,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_mem_3,checkoutservice,checkoutservice,checkoutservice,mem,EC-2: Flaky / Intermittent Latency,True,True,1.0,False,0.6,646,8852.89,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_socket_1,checkoutservice,checkoutservice,checkoutservice,socket,EC-2: Flaky / Intermittent Latency,True,True,1.0,False,0.6,770,8879.1,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_socket_2,checkoutservice,checkoutservice,checkoutservice,socket,EC-2: Flaky / Intermittent Latency,True,True,1.0,False,0.6,768,8755.55,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_socket_3,checkoutservice,recommendationservice,recommendationservice;checkoutservice,socket,CODE_BUG: Application Exception / Logic Error,False,True,0.5,False,0.75,2061,8865.44,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_cpu_1,currencyservice,currencyservice,currencyservice,cpu,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.75,795,8682.14,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_cpu_2,currencyservice,recommendationservice,recommendationservice;frontendservice,cpu,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.65,2061,8849.11,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_cpu_3,currencyservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.75,735,8732.41,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_delay_1,currencyservice,frontendservice,frontendservice,delay,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,756,8706.35,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_delay_2,currencyservice,frontendservice,frontendservice,delay,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,646,7154.84,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_delay_3,currencyservice,recommendationservice,recommendationservice;frontendservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,7268.35,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_disk_1,currencyservice,recommendationservice,recommendationservice;frontendservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,1511,8594.63,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_disk_2,currencyservice,frontendservice,frontendservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,642,8617.79,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_disk_3,currencyservice,recommendationservice,recommendationservice;frontendservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8987.15,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_loss_1,currencyservice,currencyservice,currencyservice;frontend;frontendservice,loss,EC-3: Cascading Service Crash,True,True,1.0,False,0.85,2060,7894.58,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_loss_2,currencyservice,currencyservice,currencyservice;frontendservice;frontend,loss,EC-3: Cascading Service Crash,True,True,1.0,False,0.55,1186,7282.88,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_loss_3,currencyservice,frontendservice,frontendservice,loss,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,635,8499.67,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_mem_1,currencyservice,frontendservice,frontendservice,mem,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,608,8623.7,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_mem_2,currencyservice,frontend,frontend;frontendservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8601.11,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_mem_3,currencyservice,frontend,frontend;frontendservice,mem,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2061,8658.65,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_socket_1,currencyservice,currencyservice,currencyservice;recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.6,1489,8731.19,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_socket_2,currencyservice,recommendationservice,recommendationservice;frontendservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8699.46,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_socket_3,currencyservice,recommendationservice,recommendationservice;frontendservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,1525,8713.93,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_cpu_1,emailservice,currencyservice,currencyservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,664,8637.9,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_cpu_2,emailservice,checkoutservice,checkoutservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.55,653,9066.6,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_cpu_3,emailservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,644,8963.56,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_delay_1,emailservice,checkoutservice,checkoutservice,delay,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,736,8759.46,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_delay_2,emailservice,checkoutservice,checkoutservice,delay,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,761,8701.8,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_delay_3,emailservice,recommendationservice,recommendationservice;frontendservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8675.83,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_disk_1,emailservice,currencyservice,currencyservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,719,8544.73,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_disk_2,emailservice,checkoutservice,checkoutservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.55,665,8914.42,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_disk_3,emailservice,checkoutservice,checkoutservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,581,8992.97,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_loss_1,emailservice,recommendationservice,recommendationservice;currencyservice,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8455.66,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_loss_2,emailservice,recommendationservice,recommendationservice;frontendservice,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2060,8799.01,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_loss_3,emailservice,emailservice,emailservice;frontendservice;checkoutservice,loss,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,1698,8853.82,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_mem_1,emailservice,recommendationservice,recommendationservice;frontendservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,2060,8812.8,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_mem_2,emailservice,frontendservice,frontendservice,mem,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,752,8826.44,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_mem_3,emailservice,checkoutservice,checkoutservice;recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.6,1485,8798.04,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_socket_1,emailservice,frontendservice,frontendservice,socket,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.55,655,8660.37,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_socket_2,emailservice,recommendationservice,recommendationservice;checkoutservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,2060,9052.21,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_socket_3,emailservice,recommendationservice,recommendationservice;checkoutservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2060,8835.2,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_cpu_1,productcatalogservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,616,8667.83,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_cpu_2,productcatalogservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.9,609,8923.1,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_cpu_3,productcatalogservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.9,741,9221.26,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_delay_1,productcatalogservice,frontendservice,frontendservice,delay,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.75,760,8349.0,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_delay_2,productcatalogservice,frontendservice,frontendservice,delay,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.75,660,8424.68,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_delay_3,productcatalogservice,recommendationservice,recommendationservice;frontendservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2060,8599.51,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_disk_1,productcatalogservice,recommendationservice,recommendationservice;frontendservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8578.84,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_disk_2,productcatalogservice,frontendservice,frontendservice,disk,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.9,668,8950.44,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_disk_3,productcatalogservice,recommendationservice,recommendationservice;frontendservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2060,8789.31,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_loss_1,productcatalogservice,frontend,frontend;frontendservice,loss,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2060,7444.6,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_loss_2,productcatalogservice,frontend,frontend;frontendservice,loss,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2059,7419.47,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_loss_3,productcatalogservice,productcatalogservice,productcatalogservice;frontendservice,loss,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,842,8175.33,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_mem_1,productcatalogservice,frontend,frontend;recommendationservice;frontendservice,mem,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2060,8148.28,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_mem_2,productcatalogservice,frontend,frontend;frontendservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2060,8363.09,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_mem_3,productcatalogservice,frontend,frontend;frontendservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2060,8391.89,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_socket_1,productcatalogservice,recommendationservice,recommendationservice;frontendservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2061,8626.96,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_socket_2,productcatalogservice,frontendservice,frontendservice,socket,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.75,634,8687.09,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_socket_3,productcatalogservice,frontendservice,frontendservice,socket,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,571,8833.5,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_cpu_1,recommendationservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.75,588,8675.1,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_cpu_2,recommendationservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,748,8994.56,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_cpu_3,recommendationservice,frontendservice,frontendservice,cpu,EC-2: Flaky / Intermittent Latency,False,False,0.0,True,0.6,755,9070.45,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_delay_1,recommendationservice,recommendationservice,recommendationservice,delay,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.75,705,8713.0,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_delay_2,recommendationservice,recommendationservice,recommendationservice,delay,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.75,733,9002.38,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_delay_3,recommendationservice,recommendationservice,recommendationservice,delay,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.96,2061,8786.64,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_disk_1,recommendationservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.94,2060,8773.67,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_disk_2,recommendationservice,recommendationservice,recommendationservice;frontendservice,disk,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.65,2061,7383.44,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_disk_3,recommendationservice,recommendationservice,recommendationservice;frontendservice,disk,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,1450,7431.19,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_loss_1,recommendationservice,frontend,frontend;frontendservice,loss,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2061,6837.52,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_loss_2,recommendationservice,frontend,frontend;frontendservice,loss,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2061,7263.2,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_loss_3,recommendationservice,frontend,frontend;frontendservice,loss,EC-3: Cascading Service Crash,False,False,0.0,False,0.85,2061,7166.71,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_mem_1,recommendationservice,frontendservice,frontendservice,mem,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.75,745,7326.3,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_mem_2,recommendationservice,frontendservice,frontendservice,mem,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.75,626,7263.18,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_mem_3,recommendationservice,recommendationservice,recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.94,1346,7403.75,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_socket_1,recommendationservice,recommendationservice,recommendationservice,socket,EC-2: Flaky / Intermittent Latency,True,True,1.0,False,0.75,714,7334.69,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_socket_2,recommendationservice,frontendservice,frontendservice,socket,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.75,704,7388.87,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_socket_3,recommendationservice,frontendservice,frontendservice,socket,EC-2: Flaky / Intermittent Latency,False,False,0.0,False,0.6,704,7338.16,TELEMETRY_RAG_LOCAL

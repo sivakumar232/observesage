@@ -3,12 +3,11 @@ Unit tests for LogSage log preprocessing pipeline.
 """
 
 from src.log_processor.filter import (
-    LOGSAGE_KEYWORDS,
-    matches_keyword,
     expand_asymmetric_context,
+    matches_keyword,
 )
 from src.log_processor.miner import DrainBaselineMiner
-from src.log_processor.processor import LogSageProcessor, estimate_tokens
+from src.log_processor.processor import LogSageProcessor
 
 
 def test_keyword_matching():
@@ -48,13 +47,13 @@ def test_drain_baseline_mining_and_diffing():
     assert len(miner.baseline_templates) > 0
 
     # Normal log line matching baseline
-    template, is_novel = miner.classify_line(
+    _template, is_novel = miner.classify_line(
         "2026-10-04T10:00:05 INFO User user789 logged in from 192.168.1.3"
     )
     assert is_novel is False
 
     # Novel error line NOT in baseline
-    template, is_novel = miner.classify_line(
+    _template, is_novel = miner.classify_line(
         "2026-10-04T10:00:06 FATAL OutOfMemory killed container immediately"
     )
     assert is_novel is True

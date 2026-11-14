@@ -3,11 +3,10 @@ Bidirectional fault taxonomy mapping between RCAEval benchmark labels
 and ObservaSage FailureCategory enum.
 """
 
-from typing import Dict, Optional
 from src.schemas.rca_report import FailureCategory
 
 # Standard academic taxonomy mapping
-RCAEVAL_TO_OBSERVASAGE: Dict[str, FailureCategory] = {
+RCAEVAL_TO_OBSERVASAGE: dict[str, FailureCategory] = {
     "MEM": FailureCategory.EC_1_OOM,
     "MEMORY": FailureCategory.EC_1_OOM,
     "OOM": FailureCategory.EC_1_OOM,

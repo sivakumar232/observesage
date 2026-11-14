@@ -5,7 +5,7 @@ ranked culprit service localization, and structured evidence triangulation.
 """
 
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
 from src.schemas.evidence import (
     LogEvidence,
@@ -39,18 +39,35 @@ class FusionEngine:
 
     def correlate(
         self,
-        log_evidences: Dict[str, LogEvidence],
-        metric_evidence: Optional[MetricEvidence] = None,
-        trace_evidence: Optional[TraceEvidence] = None,
-    ) -> Tuple[List[str], FailureCategory, EvidenceTriangulation, float]:
+        log_evidences: dict[str, LogEvidence],
+        metric_evidence: MetricEvidence | None = None,
+        trace_evidence: TraceEvidence | None = None,
+    ) -> tuple[list[str], FailureCategory, EvidenceTriangulation, float]:
         """
         Synthesizes multi-signal evidence using topological call graph propagation
         and cross-modal consensus scoring.
         Returns:
             (ranked_culprits, failure_category, evidence_triangulation, initial_confidence)
         """
-        service_scores: Dict[str, float] = defaultdict(float)
-        signal_votes: Dict[str, List[str]] = {"LOGS": [], "METRICS": [], "TRACES": []}
+        ranked, failure_cat, triangulation, confidence, _ = self.correlate_with_debug(
+            log_evidences=log_evidences,
+            metric_evidence=metric_evidence,
+            trace_evidence=trace_evidence,
+        )
+        return ranked, failure_cat, triangulation, confidence
+
+    def correlate_with_debug(
+        self,
+        log_evidences: dict[str, LogEvidence],
+        metric_evidence: MetricEvidence | None = None,
+        trace_evidence: TraceEvidence | None = None,
+    ) -> tuple[list[str], FailureCategory, EvidenceTriangulation, float, dict[str, Any]]:
+        """
+        Same as `correlate`, plus a structured `debug_info` dictionary containing
+        per-service scores, signal votes, and category likelihoods for artifact inspection.
+        """
+        service_scores: dict[str, float] = defaultdict(float)
+        signal_votes: dict[str, list[str]] = {"LOGS": [], "METRICS": [], "TRACES": []}
 
         # 1. Base Score from Logs
         for svc, log_ev in log_evidences.items():
@@ -75,14 +92,13 @@ class FusionEngine:
                 signal_votes["METRICS"].append(svc)
 
         # 3. Base Score from Traces
-        if trace_evidence:
-            if trace_evidence.culprit_service:
-                svc = trace_evidence.culprit_service
-                boost = self.trace_leaf_weight
-                if trace_evidence.culprit_span and trace_evidence.culprit_span.depth > 0:
-                    boost += 2.0  # Extra confidence for leaf depth > 0
-                service_scores[svc] += boost
-                signal_votes["TRACES"].append(svc)
+        if trace_evidence and trace_evidence.culprit_service:
+            svc = trace_evidence.culprit_service
+            boost = self.trace_leaf_weight
+            if trace_evidence.culprit_span and trace_evidence.culprit_span.depth > 0:
+                boost += 2.0  # Extra confidence for leaf depth > 0
+            service_scores[svc] += boost
+            signal_votes["TRACES"].append(svc)
 
         # 4. Topological Causal Graph Propagation (Dampen upstream callers, attribute to callee)
         if trace_evidence and trace_evidence.service_dependency_graph:
@@ -115,7 +131,7 @@ class FusionEngine:
         top_service = ranked_candidates[0] if ranked_candidates else "unknown"
 
         # 6. Dynamic Multi-Hypothesis Likelihood Formulation
-        likelihoods: Dict[FailureCategory, float] = {
+        likelihoods: dict[FailureCategory, float] = {
             FailureCategory.EC_1_OOM: 0.1,
             FailureCategory.EC_2_LATENCY: 0.1,
             FailureCategory.EC_3_CASCADE: 0.1,
@@ -138,6 +154,8 @@ class FusionEngine:
 
         # Trace evidence likelihood contribution
         leaf_depth = 0
+        # Trace evidence likelihood contribution
+        leaf_depth = 0
         if trace_evidence:
             if trace_evidence.culprit_span:
                 leaf_depth = trace_evidence.culprit_span.depth
@@ -145,7 +163,7 @@ class FusionEngine:
                 likelihoods[FailureCategory.EC_3_CASCADE] += 7.0 + min(4.0, leaf_depth * 1.5)
             elif trace_evidence.error_spans_count == 1:
                 likelihoods[FailureCategory.EC_3_CASCADE] += 3.0
-            elif trace_evidence.total_traces > 0 and not trace_evidence.error_spans_count:
+            elif trace_evidence.latency_bottlenecks_count > 0 or (trace_evidence.total_traces > 0 and not trace_evidence.error_spans_count):
                 likelihoods[FailureCategory.EC_2_LATENCY] += 4.0
 
         # Log evidence likelihood contribution
@@ -158,6 +176,11 @@ class FusionEngine:
                     snip_low = snip.target_line.lower()
                     if any(w in snip_low for w in ["connection refused", "network unreachable", "dns lookup failed", "host down"]):
                         likelihoods[FailureCategory.EC_5_INFRA] += 3.0
+                    if any(w in snip_low for w in ["wrong", "mismatch", "unexpected value", "corrupt", "invalid response"]):
+                        likelihoods[FailureCategory.EC_4_SILENT] += 3.0
+        elif not (metric_evidence and metric_evidence.alerts) and not (trace_evidence and (trace_evidence.error_spans_count > 0 or trace_evidence.latency_bottlenecks_count > 0)):
+            # No error logs, metric alerts, or trace anomalies -> silent data/logic failure
+            likelihoods[FailureCategory.EC_4_SILENT] += 4.0
 
         # Dynamically deduce highest-probability failure category
         failure_cat = max(likelihoods.keys(), key=lambda k: likelihoods[k])
@@ -167,7 +190,10 @@ class FusionEngine:
         # 7. Dynamic Bayesian Consensus Confidence Calculation
         # Signal-specific normalized certainty factors c_m in [0, 1]
         c_metrics = min(0.95, max(0.40, max_metric_div / 8.0)) if (metric_evidence and metric_evidence.alerts) else 0.0
-        c_traces = min(0.95, max(0.50, 0.45 + 0.15 * leaf_depth)) if (trace_evidence and trace_evidence.error_spans_count > 0) else 0.0
+        has_trace_signal = bool(
+            trace_evidence and (trace_evidence.error_spans_count > 0 or trace_evidence.latency_bottlenecks_count > 0)
+        )
+        c_traces = min(0.95, max(0.50, 0.45 + 0.15 * leaf_depth)) if has_trace_signal else 0.0
         c_logs = min(0.90, max(0.35, 0.35 + 0.10 * min(5, total_snippets))) if total_snippets > 0 else 0.0
 
         # Active agreeing signals for top candidate
@@ -223,9 +249,18 @@ class FusionEngine:
             triangulation_reasoning=triangulation_reasoning,
         )
 
-        return ranked_candidates, failure_cat, triangulation, confidence
+        debug_info: dict[str, Any] = {
+            "service_scores": {svc: round(service_scores[svc], 4) for svc in ranked_candidates},
+            "signal_votes": {
+                modal: sorted(set(svcs)) for modal, svcs in signal_votes.items()
+            },
+            "category_likelihoods": {
+                cat.value: round(val, 4) for cat, val in likelihoods.items()
+            },
+        }
+        return ranked_candidates, failure_cat, triangulation, confidence, debug_info
 
-    def _summarize_logs_insight(self, log_evidences: Dict[str, LogEvidence], target_svc: str) -> Optional[str]:
+    def _summarize_logs_insight(self, log_evidences: dict[str, LogEvidence], target_svc: str) -> str | None:
         if not log_evidences:
             return "No log evidence evaluated."
         target_ev = log_evidences.get(target_svc)
@@ -237,7 +272,7 @@ class FusionEngine:
         total_snips = sum(len(ev.snippets) for ev in log_evidences.values())
         return f"Identified {total_snips} error snippet(s) across {len(log_evidences)} microservices."
 
-    def _summarize_metrics_insight(self, metric_ev: Optional[MetricEvidence], target_svc: str) -> Optional[str]:
+    def _summarize_metrics_insight(self, metric_ev: MetricEvidence | None, target_svc: str) -> str | None:
         if not metric_ev or not metric_ev.alerts:
             return "Metrics evaluated within normal bounds (no Z-score anomalies)."
         svc_alerts = [a for a in metric_ev.alerts if a.service == target_svc]
@@ -248,7 +283,7 @@ class FusionEngine:
         top_alert = metric_ev.alerts[0]
         return f"Peak anomaly detected at '{top_alert.service}': {top_alert.metric_name} (z={top_alert.z_score:+.2f})."
 
-    def _summarize_traces_insight(self, trace_ev: Optional[TraceEvidence], target_svc: str) -> Optional[str]:
+    def _summarize_traces_insight(self, trace_ev: TraceEvidence | None, target_svc: str) -> str | None:
         if not trace_ev or trace_ev.error_spans_count == 0:
             return "Distributed traces show no failing spans or HTTP/gRPC error tags."
         if trace_ev.culprit_span:
@@ -265,9 +300,9 @@ class FusionEngine:
         category: FailureCategory,
         primary_signal: str,
         agreeing_count: int,
-        logs_in: Optional[str],
-        metrics_in: Optional[str],
-        traces_in: Optional[str],
+        logs_in: str | None,
+        metrics_in: str | None,
+        traces_in: str | None,
     ) -> str:
         parts = [
             f"Multi-signal correlation localized root cause to '{culprit}' under category {category.value}.",

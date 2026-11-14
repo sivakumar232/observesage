@@ -1,0 +1,374 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "re2ob_checkoutservice_cpu_1",
+  "mode": "logs-traces",
+  "engine_type": "TELEMETRY_RAG_LOCAL",
+  "created_at": "2026-11-12T14:30:12.613444+00:00",
+  "source": "live",
+  "case_metadata": {
+    "run_id": "re2ob_checkoutservice_cpu_1",
+    "scenario": "rcaeval_cpu",
+    "log_services_raw": 10,
+    "metric_series_raw": 72,
+    "traces_raw": 2924
+  },
+  "stage_timings": [
+    {
+      "stage": "ingesting",
+      "status": "ok",
+      "duration_ms": 5003.57,
+      "detail": null
+    },
+    {
+      "stage": "retrieving",
+      "status": "ok",
+      "duration_ms": 5729.06,
+      "detail": null
+    },
+    {
+      "stage": "diagnosing",
+      "status": "fallback",
+      "duration_ms": 0.03,
+      "detail": "LLM disabled (--no-llm)"
+    },
+    {
+      "stage": "scoring",
+      "status": "ok",
+      "duration_ms": 0.07,
+      "detail": null
+    }
+  ],
+  "evidence": {
+    "log_evidences": {},
+    "metric_evidence": null,
+    "trace_evidence": {
+      "total_traces": 2924,
+      "total_spans": 6000,
+      "error_spans_count": 0,
+      "latency_bottlenecks_count": 14,
+      "root_service": "frontendservice",
+      "culprit_service": "currencyservice",
+      "culprit_span": {
+        "trace_id": "2910dbaae450cfa1880ed709bfad81e9",
+        "span_id": "3f462d208d4cc839",
+        "parent_span_id": "7c41efb8c1f9ef9c",
+        "service_name": "frontendservice",
+        "operation_name": "hipstershop.CurrencyService/Convert",
+        "duration_ms": 491.525,
+        "self_duration_ms": 491.525,
+        "status_code": 0,
+        "error_code": null,
+        "error_message": null,
+        "is_leaf_culprit": true,
+        "depth": 1
+      },
+      "error_spans": [],
+      "latency_bottlenecks": [
+        {
+          "trace_id": "b3d78ed4ce2a6198969828da399e9a69",
+          "span_id": "4dad416dba2e143e",
+          "parent_span_id": "9b3d4c0940cc3557",
+          "service_name": "currencyservice",
+          "operation_name": "grpc.hipstershop.CurrencyService/Convert",
+          "duration_ms": 89.257,
+          "self_duration_ms": 89.257,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "b46e8a9bc7c924ec9af3c1d273d6085f",
+          "span_id": "534306caa9e81aec",
+          "parent_span_id": "18f1b93c0c409c46",
+          "service_name": "currencyservice",
+          "operation_name": "grpc.hipstershop.CurrencyService/Convert",
+          "duration_ms": 89.317,
+          "self_duration_ms": 89.317,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "9fc19cf959878af013ada1f1b4e49947",
+          "span_id": "642f6963375b5b42",
+          "parent_span_id": "17999cd7e0b54baf",
+          "service_name": "frontendservice",
+          "operation_name": "hipstershop.CurrencyService/GetSupportedCurrencies",
+          "duration_ms": 388.646,
+          "self_duration_ms": 388.646,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "8b65a8aeb9b1f7cb013c96e91bab9a0a",
+          "span_id": "69f024aafbb41a7a",
+          "parent_span_id": "66e52be360232f68",
+          "service_name": "currencyservice",
+          "operation_name": "grpc.hipstershop.CurrencyService/Convert",
+          "duration_ms": 86.317,
+          "self_duration_ms": 86.317,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "00644fce6f12bd0b338d57bb2769962c",
+          "span_id": "fad9e343e75707b8",
+          "parent_span_id": "ffa6bce00d6a0e84",
+          "service_name": "currencyservice",
+          "operation_name": "grpc.hipstershop.CurrencyService/Convert",
+          "duration_ms": 85.225,
+          "self_duration_ms": 85.225,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "9e6eaa0015ae02a383b57ae5ec387f6a",
+          "span_id": "1e6d4ed3fabb2b4a",
+          "parent_span_id": "214c8c5823267571",
+          "service_name": "checkoutservice",
+          "operation_name": "hipstershop.EmailService/SendOrderConfirmation",
+          "duration_ms": 90.877,
+          "self_duration_ms": 90.59299999999999,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "2910dbaae450cfa1880ed709bfad81e9",
+          "span_id": "3f462d208d4cc839",
+          "parent_span_id": "7c41efb8c1f9ef9c",
+          "service_name": "frontendservice",
+          "operation_name": "hipstershop.CurrencyService/Convert",
+          "duration_ms": 491.525,
+          "self_duration_ms": 491.525,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 1
+        },
+        {
+          "trace_id": "8697543447b14983959f1a84a2660fa8",
+          "span_id": "c4d797656a587dce",
+          "parent_span_id": "db3e0397e926b205",
+          "service_name": "checkoutservice",
+          "operation_name": "hipstershop.EmailService/SendOrderConfirmation",
+          "duration_ms": 85.926,
+          "self_duration_ms": 85.926,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 1
+        },
+        {
+          "trace_id": "efa03b5203807cb3e8fc796adf8fdbb1",
+          "span_id": "059996354680156d",
+          "parent_span_id": "eabea87d7e1ce247",
+          "service_name": "frontendservice",
+          "operation_name": "hipstershop.CurrencyService/GetSupportedCurrencies",
+          "duration_ms": 451.567,
+          "self_duration_ms": 451.567,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "adaebca3dc621f60aa5891f23aa7aa3d",
+          "span_id": "5f224447fe5a21d0",
+          "parent_span_id": "2808a41e6301672b",
+          "service_name": "frontendservice",
+          "operation_name": "hipstershop.CurrencyService/GetSupportedCurrencies",
+          "duration_ms": 353.046,
+          "self_duration_ms": 353.046,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "91f6489f5313f8f26934b047932bc1f0",
+          "span_id": "c2c043b4c7f4031c",
+          "parent_span_id": "b99a27945de0be7e",
+          "service_name": "currencyservice",
+          "operation_name": "grpc.hipstershop.CurrencyService/GetSupportedCurrencies",
+          "duration_ms": 88.327,
+          "self_duration_ms": 88.327,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "f7343b381a9ac02a7be457ba6850e413",
+          "span_id": "142dfd4b2ffc2220",
+          "parent_span_id": "f03f8b81ce791c52",
+          "service_name": "currencyservice",
+          "operation_name": "grpc.hipstershop.CurrencyService/Convert",
+          "duration_ms": 82.276,
+          "self_duration_ms": 82.276,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "91b48e3af05e30e694531232d4049368",
+          "span_id": "ea24f1f078cb523c",
+          "parent_span_id": "8e221e33d64dbe74",
+          "service_name": "frontendservice",
+          "operation_name": "hipstershop.CurrencyService/GetSupportedCurrencies",
+          "duration_ms": 373.515,
+          "self_duration_ms": 373.515,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        },
+        {
+          "trace_id": "53a62d6a292f6dace12119992862b316",
+          "span_id": "b6248edf6a24542a",
+          "parent_span_id": "1e8358b445b79485",
+          "service_name": "frontendservice",
+          "operation_name": "hipstershop.CurrencyService/GetSupportedCurrencies",
+          "duration_ms": 420.379,
+          "self_duration_ms": 420.379,
+          "status_code": 0,
+          "error_code": null,
+          "error_message": null,
+          "is_leaf_culprit": false,
+          "depth": 0
+        }
+      ],
+      "service_dependency_graph": {
+        "frontendservice": [
+          "currencyservice",
+          "productcatalogservice",
+          "recommendationservice"
+        ],
+        "recommendationservice": [
+          "productcatalogservice"
+        ],
+        "checkoutservice": [
+          "currencyservice",
+          "emailservice",
+          "paymentservice",
+          "productcatalogservice"
+        ]
+      },
+      "call_hierarchy_summary": "Trace b3d78ed4ce2a6198969828da399e9a69:\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (2.6ms)\n  ↳ productcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (89.3ms) [LATENCY BOTTLENECK] <--- [LEAF CULPRIT]\nfrontendservice:hipstershop.RecommendationService/ListRecommendations (8.7ms)\nfrontendservice:hipstershop.CurrencyService/GetSupportedCurrencies (62.3ms)\n\nTrace b46e8a9bc7c924ec9af3c1d273d6085f:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (89.3ms) [LATENCY BOTTLENECK]\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\n\nTrace 9fc19cf959878af013ada1f1b4e49947:\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nfrontendservice:hipstershop.CurrencyService/Convert (98.4ms)\nfrontendservice:hipstershop.CurrencyService/GetSupportedCurrencies (388.6ms) [LATENCY BOTTLENECK]\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (2.9ms)\n\nTrace 8b65a8aeb9b1f7cb013c96e91bab9a0a:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (86.3ms) [LATENCY BOTTLENECK]\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (3.3ms)\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (1.9ms)\nfrontendservice:hipstershop.ShippingService/GetQuote (3.6ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nfrontendservice:hipstershop.RecommendationService/ListRecommendations (7.3ms)\n\nTrace 00644fce6f12bd0b338d57bb2769962c:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (85.2ms) [LATENCY BOTTLENECK]",
+      "formatted_prompt": "### Distributed Trace Analysis:\n- Total Traces: 2924, Failing Spans: 0, Latency Bottlenecks: 14\n- Isolated Culprit Service: 'currencyservice'\n- Deepest Leaf Culprit Span: frontendservice:hipstershop.CurrencyService/Convert (status=LATENCY_ANOMALY, duration=491.5ms, depth=1)\n\nCall Hierarchy DAG:\nTrace b3d78ed4ce2a6198969828da399e9a69:\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (2.6ms)\n  ↳ productcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (89.3ms) [LATENCY BOTTLENECK] <--- [LEAF CULPRIT]\nfrontendservice:hipstershop.RecommendationService/ListRecommendations (8.7ms)\nfrontendservice:hipstershop.CurrencyService/GetSupportedCurrencies (62.3ms)\n\nTrace b46e8a9bc7c924ec9af3c1d273d6085f:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (89.3ms) [LATENCY BOTTLENECK]\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\n\nTrace 9fc19cf959878af013ada1f1b4e49947:\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nfrontendservice:hipstershop.CurrencyService/Convert (98.4ms)\nfrontendservice:hipstershop.CurrencyService/GetSupportedCurrencies (388.6ms) [LATENCY BOTTLENECK]\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (2.9ms)\n\nTrace 8b65a8aeb9b1f7cb013c96e91bab9a0a:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (86.3ms) [LATENCY BOTTLENECK]\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (3.3ms)\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (1.9ms)\nfrontendservice:hipstershop.ShippingService/GetQuote (3.6ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nfrontendservice:hipstershop.RecommendationService/ListRecommendations (7.3ms)\n\nTrace 00644fce6f12bd0b338d57bb2769962c:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (85.2ms) [LATENCY BOTTLENECK]",
+      "estimated_tokens": 531
+    },
+    "summary_counts": {
+      "log_services": 0,
+      "log_snippets": 0,
+      "novel_templates": 0,
+      "metric_alerts": 0,
+      "oom_alerts": 0,
+      "trace_total": 2924,
+      "trace_spans": 6000,
+      "trace_errors": 0,
+      "trace_bottlenecks": 14
+    }
+  },
+  "fusion": {
+    "ranked_services": [
+      {
+        "service": "currencyservice",
+        "score": 7.0,
+        "votes": [
+          "TRACES"
+        ]
+      }
+    ],
+    "signal_votes": {
+      "LOGS": [],
+      "METRICS": [],
+      "TRACES": [
+        "currencyservice"
+      ]
+    },
+    "category_likelihoods": {
+      "EC-1: OOM / Resource Exhaustion": 0.1,
+      "EC-2: Flaky / Intermittent Latency": 4.1,
+      "EC-3: Cascading Service Crash": 0.1,
+      "EC-4: Silent Data Corruption": 0.05,
+      "EC-5: Infrastructure Drift / Network Partition": 0.1,
+      "CODE_BUG: Application Exception / Logic Error": 0.1
+    },
+    "hypothesized_category": "EC-2: Flaky / Intermittent Latency",
+    "initial_confidence": 0.6
+  },
+  "prompt": {
+    "max_tokens": 2400,
+    "total_tokens": 765,
+    "logs_tokens": 0,
+    "metrics_tokens": 0,
+    "traces_tokens": 724,
+    "prompt_preview": "### Incident Reference ID: re2ob_checkoutservice_cpu_1\n\n### Service Dependency Graph (Caller -> Callees):\n- checkoutservice ➔ [currencyservice, emailservice, paymentservice, productcatalogservice]\n- frontendservice ➔ [currencyservice, productcatalogservice, recommendationservice]\n- recommendationservice ➔ [productcatalogservice]\n\n### Distributed Trace Analysis:\n- Total Traces: 2924, Failing Spans: 0, Latency Bottlenecks: 14\n- Isolated Culprit Service: 'currencyservice'\n- Deepest Leaf Culprit Span: frontendservice:hipstershop.CurrencyService/Convert (status=LATENCY_ANOMALY, duration=491.5ms, depth=1)\n\nCall Hierarchy DAG:\nTrace b3d78ed4ce2a6198969828da399e9a69:\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (2.6ms)\n  ↳ productcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (89.3ms) [LATENCY BOTTLENECK] <--- [LEAF CULPRIT]\nfrontendservice:hipstershop.RecommendationService/ListRecommendations (8.7ms)\nfrontendservice:hipstershop.CurrencyService/GetSupportedCurrencies (62.3ms)\n\nTrace b46e8a9bc7c924ec9af3c1d273d6085f:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (89.3ms) [LATENCY BOTTLENECK]\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\n\nTrace 9fc19cf959878af013ada1f1b4e49947:\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nfrontendservice:hipstershop.CurrencyService/Convert (98.4ms)\nfrontendservice:hipstershop.CurrencyService/GetSupportedCurrencies (388.6ms) [LATENCY BOTTLENECK]\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (2.9ms)\n\nTrace 8b65a8aeb9b1f7cb013c96e91bab9a0a:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (86.3ms) [LATENCY BOTTLENECK]\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (3.3ms)\nfrontendservice:hipstershop.ProductCatalogService/GetProduct (1.9ms)\nfrontendservice:hipstershop.ShippingService/GetQuote (3.6ms)\nproductcatalogservice:hipstershop.ProductCatalogService/GetProduct (0.0ms)\nfrontendservice:hipstershop.RecommendationService/ListRecommendations (7.3ms)\n\nTrace 00644fce6f12bd0b338d57bb2769962c:\ncurrencyservice:grpc.hipstershop.CurrencyService/Convert (85.2ms) [LATENCY BOTTLENECK]\n\n\nAnalyze the telemetry evidence above, triangulate signals across modalities using the dependency topology, and produce the structured Root Cause Analysis report."
+  },
+  "report": {
+    "run_id": "re2ob_checkoutservice_cpu_1",
+    "scenario": "rcaeval_cpu",
+    "root_cause_service": "currencyservice",
+    "culprit_services": [
+      "currencyservice"
+    ],
+    "failure_category": "EC-2: Flaky / Intermittent Latency",
+    "confidence_score": 0.6,
+    "root_cause_summary": "Telemetry-RAG localized root cause to 'currencyservice' failing under EC-2: Flaky / Intermittent Latency.",
+    "evidence_triangulation": {
+      "primary_signal": "TRACES",
+      "logs_insight": "No log evidence evaluated.",
+      "metrics_insight": "Metrics evaluated within normal bounds (no Z-score anomalies).",
+      "traces_insight": "Distributed traces show no failing spans or HTTP/gRPC error tags.",
+      "triangulation_reasoning": "Multi-signal correlation localized root cause to 'currencyservice' under category EC-2: Flaky / Intermittent Latency. Cross-modal consensus verified across 1 telemetry modality/modalities (Primary: TRACES)."
+    },
+    "culprit_trace_id": null,
+    "culprit_span_id": null,
+    "remediation_steps": [],
+    "prompt_tokens_used": 765,
+    "total_tokens_used": 0
+  },
+  "evaluation": {
+    "case_id": "re2ob_checkoutservice_cpu_1",
+    "ground_truth_service": "checkoutservice",
+    "predicted_service": "currencyservice",
+    "ranked_candidates": [
+      "currencyservice"
+    ],
+    "ground_truth_fault": "cpu",
+    "predicted_category": "EC-2: Flaky / Intermittent Latency",
+    "top1_hit": false,
+    "top3_hit": false,
+    "mrr": 0.0,
+    "fault_match": true,
+    "error_bucket": "localization_miss",
+    "confidence": 0.6,
+    "prompt_tokens": 765,
+    "duration_ms": 10732.78,
+    "engine_type": "TELEMETRY_RAG_LOCAL"
+  }
+}

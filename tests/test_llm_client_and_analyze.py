@@ -7,20 +7,19 @@ Verifies:
 """
 
 import pytest
+
+from src.fusion import FusionEngine
 from src.llm import GeminiRCAClient
+from src.llm.prompt import build_multimodal_prompt
+from src.log_processor import LogSageProcessor
+from src.metrics_processor import MetricsProcessor
+from src.rag import TelemetryRAGRetriever
 from src.schemas import (
     FailureCategory,
     RCAReport,
     TelemetrySnapshot,
 )
-from src.fusion import FusionEngine
-from src.log_processor import LogSageProcessor
-from src.metrics_processor import MetricsProcessor
 from src.trace_processor import TraceProcessor
-from src.llm.prompt import build_multimodal_prompt
-
-
-from src.rag import TelemetryRAGRetriever
 
 
 def test_client_requires_live_api_key():
@@ -128,7 +127,7 @@ def test_tri_modal_analysis_pipeline_integration():
 
     # 5. Run fusion engine
     fusion = FusionEngine()
-    ranked, failure_cat, triangulation, conf = fusion.correlate(log_ev, metric_ev, trace_ev)
+    ranked, _failure_cat, triangulation, _conf = fusion.correlate(log_ev, metric_ev, trace_ev)
     assert ranked[0] == "cartservice"
     assert triangulation.primary_signal in ["METRICS", "FUSION"]
 

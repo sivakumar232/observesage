@@ -8,13 +8,14 @@ Executes an automated integration test against the microservices:
 4. Records execution window [t_start, t_end] and saves run metadata to data/runs/
 """
 
-import sys
-import os
+import argparse
+import datetime
 import json
+import os
+import sys
 import time
 import uuid
-import datetime
-import argparse
+
 import requests
 from rich.console import Console
 
@@ -88,7 +89,7 @@ def main():
 
     console.print(f"[bold cyan]▶ Starting Pipeline Run: [white]{run_id}[/white] (Scenario: [yellow]{args.scenario}[/yellow])[/bold cyan]")
     
-    t_start = datetime.datetime.now(datetime.timezone.utc)
+    t_start = datetime.datetime.now(datetime.UTC)
     status = "SUCCESS"
     error_message = None
     steps = []
@@ -101,7 +102,7 @@ def main():
         error_message = str(e)
         console.print(f"[bold red]✖ Pipeline Run Failed:[/bold red] {e}")
 
-    t_end = datetime.datetime.now(datetime.timezone.utc)
+    t_end = datetime.datetime.now(datetime.UTC)
     duration_s = (t_end - t_start).total_seconds()
 
     run_meta = {

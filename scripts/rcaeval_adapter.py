@@ -14,12 +14,11 @@ Key Architectural Guarantees:
 
 import argparse
 import csv
-from datetime import datetime, timezone
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
-import re
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any
 
 try:
     import pandas as pd
@@ -77,7 +76,7 @@ def parse_timestamp_value(raw: Any) -> float:
         try:
             dt = datetime.strptime(raw_str, fmt)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
             return dt.timestamp()
         except ValueError:
             continue
@@ -90,7 +89,7 @@ def parse_timestamp_value(raw: Any) -> float:
         raise ValueError(f"Unable to parse timestamp value: {raw}")
 
 
-def detect_column(fieldnames: List[str], candidates: List[str]) -> Optional[str]:
+def detect_column(fieldnames: list[str], candidates: list[str]) -> str | None:
     """Finds the first matching candidate in fieldnames (case-insensitive)."""
     norm_map = {fn.strip().lower(): fn for fn in fieldnames}
     for cand in candidates:
@@ -109,7 +108,7 @@ class RCAEvalAdapter:
         baseline_duration_sec: float = 600.0,
         incident_duration_sec: float = 300.0,
         bucket_size_sec: float = 5.0,
-        cases_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+        cases_metadata: dict[str, dict[str, Any]] | None = None,
     ):
         self.baseline_duration_sec = baseline_duration_sec
         self.incident_duration_sec = incident_duration_sec
@@ -117,13 +116,13 @@ class RCAEvalAdapter:
         self.cases_metadata = cases_metadata or {}
 
     @classmethod
-    def load_metadata_registry(cls, registry_path: Union[str, Path]) -> Dict[str, Dict[str, Any]]:
+    def load_metadata_registry(cls, registry_path: str | Path) -> dict[str, dict[str, Any]]:
         """Loads cases.parquet or cases.csv if available."""
         path = Path(registry_path)
         if not path.exists():
             return {}
 
-        registry: Dict[str, Dict[str, Any]] = {}
+        registry: dict[str, dict[str, Any]] = {}
         if path.suffix == ".parquet" and pd is not None:
             df = pd.read_parquet(path)
             for _, row in df.iterrows():
@@ -152,7 +151,7 @@ class RCAEvalAdapter:
 
     def parse_logs(
         self, case_dir: Path, inject_time: float
-    ) -> Tuple[Dict[str, List[str]], Dict[str, List[str]], List[Tuple[float, str]]]:
+    ) -> tuple[dict[str, list[str]], dict[str, list[str]], list[tuple[float, str]]]:
         """
         Parses logs (logs.parquet or logs.csv) into (baseline_logs, incident_logs, raw_timestamped_logs).
         Returns logs segmented by service and bucketable timestamp pairs.
@@ -160,9 +159,9 @@ class RCAEvalAdapter:
         baseline_start = inject_time - self.baseline_duration_sec
         incident_end = inject_time + self.incident_duration_sec
 
-        baseline_logs: Dict[str, List[str]] = {}
-        incident_logs: Dict[str, List[str]] = {}
-        all_timestamped_logs: List[Tuple[float, str]] = []
+        baseline_logs: dict[str, list[str]] = {}
+        incident_logs: dict[str, list[str]] = {}
+        all_timestamped_logs: list[tuple[float, str]] = []
 
         logs_parquet = case_dir / "logs.parquet"
         logs_csv = case_dir / "logs.csv"
@@ -173,22 +172,43 @@ class RCAEvalAdapter:
             service_col = detect_column(df.columns.tolist(), ["container_name", "service", "service_name", "pod", "app"])
             msg_col = detect_column(df.columns.tolist(), ["message", "content", "log", "text", "msg", "body"])
 
-            if time_col and msg_col:
-                for _, row in df.iterrows():
-                    try:
-                        ts = parse_timestamp_value(row[time_col])
-                    except Exception:
-                        continue
+            if time_col and msg_col and len(df) > 0:
+                ts_vals = pd.to_numeric(df[time_col], errors="coerce")
+                if ts_vals.notna().all():
+                    raw_arr = ts_vals.astype(float).values
+                    sample_val = float(raw_arr[0])
+                    if sample_val > 1e16:
+                        ts_arr = raw_arr / 1e9
+                    elif sample_val > 1e13:
+                        ts_arr = raw_arr / 1e6
+                    elif sample_val > 1e10:
+                        ts_arr = raw_arr / 1e3
+                    else:
+                        ts_arr = raw_arr
+                else:
+                    ts_arr = df[time_col].map(parse_timestamp_value).astype(float).values
 
-                    service = str(row[service_col]).strip() if service_col and pd.notna(row[service_col]) else "unknown_service"
-                    msg = str(row[msg_col]).strip()
-                    iso_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                window_mask = (ts_arr >= baseline_start) & (ts_arr <= incident_end)
+                ts_win = ts_arr[window_mask]
+                df_win = df[window_mask]
+
+                svc_vals = (
+                    df_win[service_col].fillna("unknown_service").astype(str).str.strip().tolist()
+                    if service_col
+                    else ["unknown_service"] * len(df_win)
+                )
+                msg_vals = df_win[msg_col].fillna("").astype(str).str.strip().tolist()
+
+                for ts, service, msg in zip(ts_win.tolist(), svc_vals, msg_vals):
+                    if not service:
+                        service = "unknown_service"
+                    iso_ts = datetime.fromtimestamp(ts, tz=UTC).isoformat()
                     formatted_line = f"[{iso_ts}] {msg}"
 
                     all_timestamped_logs.append((ts, service))
-                    if baseline_start <= ts < inject_time:
+                    if ts < inject_time:
                         baseline_logs.setdefault(service, []).append(formatted_line)
-                    elif inject_time <= ts <= incident_end:
+                    else:
                         incident_logs.setdefault(service, []).append(formatted_line)
             return baseline_logs, incident_logs, all_timestamped_logs
 
@@ -215,7 +235,7 @@ class RCAEvalAdapter:
 
                 service = (row[service_col].strip() if service_col and row.get(service_col) else "unknown_service")
                 msg = row[msg_col].strip()
-                iso_ts = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                iso_ts = datetime.fromtimestamp(ts, tz=UTC).isoformat()
                 formatted_line = f"[{iso_ts}] {msg}"
 
                 all_timestamped_logs.append((ts, service))
@@ -229,7 +249,7 @@ class RCAEvalAdapter:
 
     def parse_metrics(
         self, case_dir: Path, inject_time: float
-    ) -> Tuple[List[MetricSeries], List[MetricSeries], List[Tuple[float, str]]]:
+    ) -> tuple[list[MetricSeries], list[MetricSeries], list[tuple[float, str]]]:
         """
         Parses metrics (metrics.parquet or metrics.json) into (baseline_metrics, incident_metrics, raw_timestamped_points).
         Handles wide-format Parquet tables and nested JSON dictionaries.
@@ -237,7 +257,7 @@ class RCAEvalAdapter:
         baseline_start = inject_time - self.baseline_duration_sec
         incident_end = inject_time + self.incident_duration_sec
 
-        flat_series: Dict[str, List[List[Any]]] = {}
+        flat_series: dict[str, list[list[Any]]] = {}
 
         metrics_parquet = case_dir / "metrics.parquet"
         metrics_json = case_dir / "metrics.json"
@@ -274,13 +294,13 @@ class RCAEvalAdapter:
                         if isinstance(vals, list):
                             flat_series[name] = vals
 
-        baseline_metric_series: List[MetricSeries] = []
-        incident_metric_series: List[MetricSeries] = []
-        all_timestamped_points: List[Tuple[float, str]] = []
+        baseline_metric_series: list[MetricSeries] = []
+        incident_metric_series: list[MetricSeries] = []
+        all_timestamped_points: list[tuple[float, str]] = []
 
         for metric_name, points in flat_series.items():
-            base_pts: List[Dict[str, Any]] = []
-            inc_pts: List[Dict[str, Any]] = []
+            base_pts: list[dict[str, Any]] = []
+            inc_pts: list[dict[str, Any]] = []
 
             for pt in points:
                 if not (isinstance(pt, (list, tuple)) and len(pt) >= 2):
@@ -321,7 +341,7 @@ class RCAEvalAdapter:
 
     def parse_traces(
         self, case_dir: Path, inject_time: float
-    ) -> Tuple[List[Trace], List[Trace], List[Tuple[float, str]]]:
+    ) -> tuple[list[Trace], list[Trace], list[tuple[float, str]]]:
         """
         Parses traces (traces.parquet or traces.csv) into (baseline_traces, incident_traces, raw_timestamped_spans).
         Assembles individual span rows into parent-child Trace DAG objects.
@@ -329,8 +349,8 @@ class RCAEvalAdapter:
         baseline_start = inject_time - self.baseline_duration_sec
         incident_end = inject_time + self.incident_duration_sec
 
-        raw_traces_map: Dict[str, List[TraceSpan]] = {}
-        all_timestamped_spans: List[Tuple[float, str]] = []
+        raw_traces_map: dict[str, list[TraceSpan]] = {}
+        all_timestamped_spans: list[tuple[float, str]] = []
 
         traces_parquet = case_dir / "traces.parquet"
         traces_csv = case_dir / "traces.csv"
@@ -339,19 +359,34 @@ class RCAEvalAdapter:
             df = pd.read_parquet(traces_parquet)
             time_col = detect_column(df.columns.tolist(), ["startTime", "startTimeMillis", "time", "timestamp", "ts"])
             if time_col and len(df) > 0:
-                raw_times = df[time_col].values
-                # Standardize to seconds
-                if float(raw_times[0]) > 1e12:
+                raw_times = df[time_col].astype(float).values
+                # Standardize to seconds (nanoseconds >1e16, microseconds >1e13, milliseconds >1e10)
+                if raw_times[0] > 1e16:
+                    ts_seconds = raw_times / 1e9
+                elif raw_times[0] > 1e13:
                     ts_seconds = raw_times / 1e6
+                elif raw_times[0] > 1e10:
+                    ts_seconds = raw_times / 1e3
                 else:
                     ts_seconds = raw_times
-                
+
                 mask = (ts_seconds >= baseline_start) & (ts_seconds <= incident_end)
                 df = df[mask]
-                
-                # Sample up to 10,000 spans from within the window if still large
+                ts_filtered = ts_seconds[mask]
+
+                # Stratified sample up to 10,000 spans preserving incident spans
                 if len(df) > 10000:
-                    df = df.iloc[:10000]
+                    inc_mask = ts_filtered >= inject_time
+                    df_inc = df[inc_mask]
+                    df_base = df[~inc_mask]
+                    max_inc = min(len(df_inc), 6000)
+                    max_base = min(len(df_base), 10000 - max_inc)
+                    df = pd.concat(
+                        [
+                            df_inc.sample(n=max_inc, random_state=42) if max_inc < len(df_inc) else df_inc,
+                            df_base.sample(n=max_base, random_state=42) if max_base < len(df_base) else df_base,
+                        ]
+                    )
 
             trace_id_col = detect_column(df.columns.tolist(), ["traceID", "trace_id", "id"])
             span_id_col = detect_column(df.columns.tolist(), ["spanID", "span_id"])
@@ -383,7 +418,7 @@ class RCAEvalAdapter:
                     except (ValueError, TypeError):
                         dur_us = 0
 
-                tags: List[Dict[str, Any]] = [
+                tags: list[dict[str, Any]] = [
                     {"key": "service.name", "value": service},
                     {"key": "operation.name", "value": operation},
                 ]
@@ -473,7 +508,7 @@ class RCAEvalAdapter:
                         except ValueError:
                             duration_us = 0
 
-                    tags: List[Dict[str, Any]] = [
+                    tags: list[dict[str, Any]] = [
                         {"key": "service.name", "value": service},
                         {"key": "operation.name", "value": operation},
                     ]
@@ -502,8 +537,8 @@ class RCAEvalAdapter:
                     raw_traces_map.setdefault(trace_id, []).append(span)
                     all_timestamped_spans.append((ts, service))
 
-        baseline_traces: List[Trace] = []
-        incident_traces: List[Trace] = []
+        baseline_traces: list[Trace] = []
+        incident_traces: list[Trace] = []
 
         for trace_id, spans in raw_traces_map.items():
             if not spans:
@@ -521,10 +556,10 @@ class RCAEvalAdapter:
     def compute_time_buckets(
         self,
         inject_time: float,
-        timestamped_logs: List[Tuple[float, str]],
-        timestamped_metrics: List[Tuple[float, str]],
-        timestamped_spans: List[Tuple[float, str]],
-    ) -> List[TimeBucketSummary]:
+        timestamped_logs: list[tuple[float, str]],
+        timestamped_metrics: list[tuple[float, str]],
+        timestamped_spans: list[tuple[float, str]],
+    ) -> list[TimeBucketSummary]:
         """
         Quantizes events across all signals into discrete time buckets
         aligned to inject_time. Negative indices represent pre-injection baseline buckets.
@@ -532,7 +567,7 @@ class RCAEvalAdapter:
         min_time = inject_time - self.baseline_duration_sec
         max_time = inject_time + self.incident_duration_sec
 
-        bucket_data: Dict[int, Dict[str, Any]] = {}
+        bucket_data: dict[int, dict[str, Any]] = {}
 
         def add_event(ts: float, svc: str, kind: str):
             if ts < min_time or ts > max_time:
@@ -567,7 +602,7 @@ class RCAEvalAdapter:
         for ts, svc in timestamped_spans:
             add_event(ts, svc, "span")
 
-        summaries: List[TimeBucketSummary] = []
+        summaries: list[TimeBucketSummary] = []
         for b_idx in sorted(bucket_data.keys()):
             data = bucket_data[b_idx]
             summaries.append(
@@ -584,7 +619,7 @@ class RCAEvalAdapter:
 
         return summaries
 
-    def extract_ground_truth(self, case_dir: Path) -> Dict[str, Any]:
+    def extract_ground_truth(self, case_dir: Path) -> dict[str, Any]:
         """
         Retrieves ground truth labels for the case directory:
         1. Checks cases.parquet / cases.csv metadata registry.
@@ -641,7 +676,7 @@ class RCAEvalAdapter:
             "dataset": dataset,
         }
 
-    def convert_case(self, case_dir: Union[str, Path]) -> Tuple[TelemetrySnapshot, Dict[str, Any]]:
+    def convert_case(self, case_dir: str | Path) -> tuple[TelemetrySnapshot, dict[str, Any]]:
         """
         Converts a single RCAEval case folder into a validated TelemetrySnapshot
         and companion ground truth dictionary.
@@ -669,8 +704,8 @@ class RCAEvalAdapter:
             run_id=case_id,
             scenario=f"rcaeval_{gt_info.get('ground_truth_fault_type', 'incident').lower()}",
             status="FAILED",
-            start_time=datetime.fromtimestamp(inject_time - self.baseline_duration_sec, tz=timezone.utc),
-            end_time=datetime.fromtimestamp(inject_time + self.incident_duration_sec, tz=timezone.utc),
+            start_time=datetime.fromtimestamp(inject_time - self.baseline_duration_sec, tz=UTC),
+            end_time=datetime.fromtimestamp(inject_time + self.incident_duration_sec, tz=UTC),
             duration_seconds=self.baseline_duration_sec + self.incident_duration_sec,
             error_message=f"RCAEval injected fault: {gt_info.get('ground_truth_fault_type')}",
             steps=[
@@ -682,7 +717,7 @@ class RCAEvalAdapter:
         snapshot = TelemetrySnapshot(
             run_id=case_id,
             metadata=meta,
-            captured_at=datetime.fromtimestamp(inject_time, tz=timezone.utc),
+            captured_at=datetime.fromtimestamp(inject_time, tz=UTC),
             inject_time=inject_time,
             time_buckets=time_buckets,
             ground_truth_service=gt_info.get("ground_truth_service"),
@@ -703,9 +738,9 @@ class RCAEvalAdapter:
 
     def save_case(
         self,
-        case_dir: Union[str, Path],
-        output_dir: Union[str, Path] = "data/runs/failed",
-    ) -> Tuple[Path, Path]:
+        case_dir: str | Path,
+        output_dir: str | Path = "data/runs/failed",
+    ) -> tuple[Path, Path]:
         """Converts case and saves snapshot & ground_truth JSON files."""
         snapshot, gt_info = self.convert_case(case_dir)
         out_path = Path(output_dir).resolve()
@@ -746,7 +781,7 @@ def main():
         cases_metadata=registry,
     )
 
-    targets: List[Path] = []
+    targets: list[Path] = []
     if args.case_dir:
         targets.append(Path(args.case_dir))
     elif args.cases_root:

@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ObservaSage — Multi-Signal Root Cause Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-base: #070a13;
+    --bg-surface: #0f1629;
+    --bg-card: #151f38;
+    --bg-elevated: #1c294a;
+    --border: #223256;
+    --border-light: rgba(255, 255, 255, 0.08);
+
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+
+    /* Semantic vibrant colors */
+    --emerald: #10b981;
+    --emerald-glow: rgba(16, 185, 129, 0.25);
+    --rose: #f43f5e;
+    --rose-glow: rgba(244, 63, 94, 0.25);
+    --amber: #f59e0b;
+    --amber-glow: rgba(245, 158, 11, 0.25);
+    --indigo: #6366f1;
+    --indigo-glow: rgba(99, 102, 241, 0.3);
+    --cyan: #06b6d4;
+    --purple: #a855f7;
+
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  #header {
+    background: rgba(15, 22, 41, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--indigo), var(--cyan));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 14px;
+    color: #fff;
+    box-shadow: 0 0 15px var(--indigo-glow);
+  }
+  .brand-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .brand-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: #a5b4fc;
+    font-weight: 600;
+  }
+
+  .header-sep { margin-left: auto; }
+  .mode-selector-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    padding: 3px 4px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .mode-chip {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    transition: all 0.15s;
+  }
+  .mode-chip:hover { color: #fff; }
+  .mode-chip.active {
+    background: var(--indigo);
+    color: #fff;
+    box-shadow: 0 2px 8px var(--indigo-glow);
+  }
+
+  #health-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+  #health-indicator .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--emerald);
+    box-shadow: 0 0 8px var(--emerald);
+  }
+
+  /* ── 3-Column Layout ── */
+  #workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Left: Case Explorer */
+  #sidebar {
+    width: 320px;
+    min-width: 260px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .sidebar-head {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .search-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-glow); }
+
+  .filter-pills {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+  }
+  .filter-pill {
+    padding: 3px 8px;
+    border-radius: 14px;
+    font-size: 11px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .filter-pill.active {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: var(--indigo);
+    color: #a5b4fc;
+    font-weight: 600;
+  }
+
+  .dropdown-row {
+    display: flex;
+    gap: 6px;
+  }
+  .dropdown-select {
+    flex: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+  }
+
+  #cases-container {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .case-card {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+  }
+  .case-card:hover {
+    background: var(--bg-card);
+  }
+  .case-card.selected {
+    background: rgba(99, 102, 241, 0.12);
+    border-left: 3px solid var(--indigo);
+  }
+  .case-card.running {
+    background: rgba(99, 102, 241, 0.18);
+    border-left: 3px solid var(--cyan);
+    animation: pulseBorder 1.5s infinite;
+  }
+  @keyframes pulseBorder {
+    0%, 100% { box-shadow: inset 0 0 10px rgba(6, 182, 212, 0.2); }
+    50% { box-shadow: inset 0 0 18px rgba(99, 102, 241, 0.4); }
+  }
+
+  .case-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .case-card-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: #e2e8f0;
+    word-break: break-all;
+  }
+  .case-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .case-badge.hit { background: rgba(16, 185, 129, 0.2); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.35); }
+  .case-badge.top3 { background: rgba(245, 158, 11, 0.2); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.35); }
+  .case-badge.miss { background: rgba(244, 63, 94, 0.2); color: var(--rose); border: 1px solid rgba(244, 63, 94, 0.35); }
+  .case-badge.unscored { background: var(--bg-elevated); color: var(--text-muted); }
+  .case-badge.running { background: rgba(99, 102, 241, 0.25); color: var(--cyan); border: 1px solid var(--cyan); animation: spin 1s linear infinite; }
+
+  .case-card-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .case-card-prediction {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  /* Center: Command Center */
+  #main-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-base);
+  }
+
+  /* Hero Outcome Banner */
+  #outcome-banner {
+    padding: 16px 24px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-shrink: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  #outcome-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: var(--border);
+    transition: all 0.3s;
+  }
+  #outcome-banner.status-hit::before { background: var(--emerald); box-shadow: 0 0 12px var(--emerald); }
+  #outcome-banner.status-miss::before { background: var(--rose); box-shadow: 0 0 12px var(--rose); }
+  #outcome-banner.status-top3::before { background: var(--amber); box-shadow: 0 0 12px var(--amber); }
+  #outcome-banner.status-running::before {
+    background: linear-gradient(90deg, var(--indigo), var(--cyan), var(--purple));
+    box-shadow: 0 0 15px var(--cyan);
+    background-size: 200% 100%;
+    animation: gradientSlide 1.5s linear infinite;
+  }
+  @keyframes gradientSlide { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+  .outcome-verdict-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .outcome-chip {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .outcome-service {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .outcome-gt-tag {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .outcome-gt-tag b { color: var(--text-secondary); font-family: var(--font-mono); }
+
+  .outcome-stats-group {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .stat-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+  }
+  .stat-block .val {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+  }
+  .stat-block .lbl {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+
+  .run-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-run {
+    background: linear-gradient(135deg, var(--indigo), #4338ca);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px var(--indigo-glow);
+    transition: all 0.2s;
+  }
+  .btn-run:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.45);
+  }
+  .btn-run:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-ghost {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-ghost:hover {
+    color: #fff;
+    border-color: var(--indigo);
+  }
+
+  /* ── Interactive Live Pipeline Stepper ── */
+  #pipeline-stepper {
+    background: #0b1122;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .stepper-nodes {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .step-node {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: rgba(21, 31, 56, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.25s;
+  }
+  .step-node.done {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  .step-node.active {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: var(--indigo);
+    box-shadow: 0 0 15px var(--indigo-glow);
+  }
+  .step-node.error {
+    background: rgba(244, 63, 94, 0.15);
+    border-color: var(--rose);
+  }
+
+  .step-circle {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .step-node.done .step-circle {
+    background: var(--emerald);
+    color: #fff;
+  }
+  .step-node.active .step-circle {
+    background: var(--cyan);
+    color: #000;
+    box-shadow: 0 0 10px var(--cyan);
+  }
+
+  .step-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .step-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .step-node.active .step-label { color: #fff; font-weight: 700; }
+  .step-duration {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+  }
+
+  /* Live Terminal Console Log */
+  #activity-ticker {
+    background: #080d19;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--cyan);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+  }
+  #activity-ticker .ticker-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+    animation: beacon 1s infinite alternate;
+  }
+  @keyframes beacon { from { opacity: 0.3; } to { opacity: 1; } }
+
+  /* ── Tabs Navigation ── */
+  .panel-tabs {
+    display: flex;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    padding: 11px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tab-btn:hover { color: var(--text-primary); }
+  .tab-btn.active {
+    color: #fff;
+    border-bottom-color: var(--indigo);
+  }
+
+  /* Tab Content Panels */
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Triangulation 3-Signal Grid */
+  .triangulation-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .signal-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .signal-box-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .signal-box-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .signal-box.logs .signal-box-title { color: var(--cyan); }
+  .signal-box.metrics .signal-box-title { color: var(--amber); }
+  .signal-box.traces .signal-box-title { color: var(--purple); }
+  .signal-box-body {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* Ranked Services Table */
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.data-table th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+  }
+  table.data-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    vertical-align: middle;
+  }
+  table.data-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .vote-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 3px;
+  }
+  .vote-badge.logs { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+  .vote-badge.metrics { background: rgba(245, 158, 11, 0.15); color: var(--amber); }
+  .vote-badge.traces { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+
+  /* SVG DAG */
+  #dag-svg-wrap {
+    background: #080c18;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: auto;
+    min-height: 220px;
+    padding: 10px;
+  }
+
+  /* Right Scoreboard Panel */
+  #scoreboard {
+    width: 320px;
+    min-width: 270px;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 16px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .scoreboard-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  .ablation-mini-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ablation-mini-card.active-mode {
+    border-color: var(--indigo);
+    box-shadow: 0 0 10px var(--indigo-glow);
+  }
+  .am-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .am-mode-name {
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .am-top1 {
+    font-size: 15px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+  }
+  .am-bar-bg {
+    height: 5px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .am-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+  }
+
+  /* Helpers */
+  .mono { font-family: var(--font-mono); }
+  .badge {
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-block;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 30px 16px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header id="header">
+  <div class="brand">
+    <div class="brand-logo">🔭</div>
+    <div>
+      <div class="brand-title">ObservaSage</div>
+    </div>
+    <span class="brand-tag">v2.0 · Multi-Signal Triangulation</span>
+  </div>
+
+  <span class="header-sep"></span>
+
+  <div class="mode-selector-wrap" id="mode-bar">
+    <button class="mode-chip active" data-mode="fusion">Full Fusion</button>
+    <button class="mode-chip" data-mode="logs-metrics">Logs + Metrics</button>
+    <button class="mode-chip" data-mode="logs-traces">Logs + Traces</button>
+    <button class="mode-chip" data-mode="logs-only">Logs-Only (LogSage)</button>
+  </div>
+
+  <div id="health-indicator">
+    <div class="dot"></div>
+    <span id="health-text">90 Cases Ready</span>
+  </div>
+</header>
+
+<!-- Main Workspace -->
+<div id="workspace">
+
+  <!-- Left: Case Explorer -->
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <input type="search" class="search-input" id="search-box" placeholder="Search case or service...">
+      <div class="filter-pills">
+        <button class="filter-pill active" data-filter="all">All (<span id="count-all">0</span>)</button>
+        <button class="filter-pill" data-filter="hit">✓ Top@1 (<span id="count-hit">0</span>)</button>
+        <button class="filter-pill" data-filter="miss">✗ Misses (<span id="count-miss">0</span>)</button>
+        <button class="filter-pill" data-filter="unscored">Untested</button>
+      </div>
+      <div class="dropdown-row">
+        <select class="dropdown-select" id="filter-suite">
+          <option value="">All Suites</option>
+          <option value="RE2-OB">RE2-OB (Boutique)</option>
+          <option value="RE2-TT">RE2-TT (Ticket)</option>
+          <option value="RE3-OB">RE3-OB</option>
+          <option value="RE3-TT">RE3-TT</option>
+        </select>
+        <select class="dropdown-select" id="filter-fault">
+          <option value="">All Faults</option>
+          <option value="cpu">CPU Stress</option>
+          <option value="mem">Memory Pressure</option>
+          <option value="delay">Network Delay</option>
+          <option value="loss">Packet Loss</option>
+          <option value="socket-connection">Socket Leak</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="cases-container">
+      <div class="empty-state">Loading benchmark cases...</div>
+    </div>
+  </aside>
+
+  <!-- Center: Command Center -->
+  <main id="main-panel">
+
+    <!-- Hero Outcome Banner -->
+    <div id="outcome-banner" class="status-hit">
+      <div class="outcome-verdict-col">
+        <div class="outcome-chip" id="banner-status-chip">
+          <span style="color:var(--emerald)">●</span> READY TO DIAGNOSE
+        </div>
+        <div class="outcome-service" id="banner-service">
+          Select a case to inspect
+        </div>
+        <div class="outcome-gt-tag" id="banner-gt-line">
+          Ground Truth: <b id="banner-gt-service">—</b> · Fault: <b id="banner-gt-fault">—</b>
+        </div>
+      </div>
+
+      <div class="outcome-stats-group">
+        <div class="stat-block">
+          <span class="val" id="stat-confidence" style="color:var(--emerald)">—</span>
+          <span class="lbl">Confidence</span>
+        </div>
+        <div class="stat-block">
+          <span class="val" id="stat-tokens" style="color:var(--cyan)">—</span>
+          <span class="lbl">Prompt Tokens</span>
+        </div>
+        <div class="stat-block">
+          <span class="val" id="stat-duration" style="color:#e2e8f0">—</span>
+          <span class="lbl">Latency</span>
+        </div>
+
+        <div class="run-actions">
+          <button class="btn-run" id="btn-run-diagnosis">
+            <span>▶</span> Run Diagnosis
+          </button>
+          <button class="btn-ghost" id="btn-recompute" title="Force re-run without cache">
+            ↻ Force Run
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Live Pipeline Stepper -->
+    <div id="pipeline-stepper">
+      <div class="stepper-nodes">
+        <div class="step-node done" id="step-ingest">
+          <div class="step-circle">1</div>
+          <div class="step-info">
+            <span class="step-label">Telemetry Ingest</span>
+            <span class="step-duration" id="dur-ingest">0ms</span>
+          </div>
+        </div>
+        <div class="step-node done" id="step-metrics">
+          <div class="step-circle">2</div>
+          <div class="step-info">
+            <span class="step-label">Metric Z-Scores &amp; Slope</span>
+            <span class="step-duration" id="dur-metrics">0ms</span>
+          </div>
+        </div>
+        <div class="step-node done" id="step-traces">
+          <div class="step-circle">3</div>
+          <div class="step-info">
+            <span class="step-label">Jaeger Span DAG DFS</span>
+            <span class="step-duration" id="dur-traces">0ms</span>
+          </div>
+        </div>
+        <div class="step-node done" id="step-logs">
+          <div class="step-circle">4</div>
+          <div class="step-info">
+            <span class="step-label">Drain3 Novel Mining</span>
+            <span class="step-duration" id="dur-logs">0ms</span>
+          </div>
+        </div>
+        <div class="step-node done" id="step-fusion">
+          <div class="step-circle">5</div>
+          <div class="step-info">
+            <span class="step-label">Causal Consensus</span>
+            <span class="step-duration" id="dur-fusion">0ms</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="activity-ticker">
+        <div class="ticker-pulse"></div>
+        <span id="ticker-text">System idle. Select any microservice incident from the left to inspect.</span>
+      </div>
+    </div>
+
+    <!-- Deep-Dive Navigation Tabs -->
+    <nav class="panel-tabs">
+      <button class="tab-btn active" data-tab="overview">🎯 Root Cause &amp; Triangulation</button>
+      <button class="tab-btn" data-tab="evidence">📡 Telemetry Signals</button>
+      <button class="tab-btn" data-tab="dag">🕸 Causal Call Graph</button>
+      <button class="tab-btn" data-tab="comparison">📊 4-Way Mode Ablation</button>
+      <button class="tab-btn" data-tab="prompt">🔤 Prompt &amp; Token Budget</button>
+    </nav>
+
+    <!-- Tab 1: Overview & Triangulation -->
+    <div class="panel-body" id="tab-overview">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📖 Root Cause Narrative Summary</span>
+          <span class="badge" id="category-badge" style="background:rgba(99,102,241,0.2);color:#a5b4fc">Category</span>
+        </div>
+        <p id="narrative-text" style="font-size:13px;line-height:1.6;color:var(--text-secondary)">
+          Select an incident to view root cause diagnosis.
+        </p>
+      </div>
+
+      <div class="triangulation-grid">
+        <div class="signal-box logs">
+          <div class="signal-box-header">
+            <span class="signal-box-title">📋 Logs Insight</span>
+            <span class="badge" id="tri-logs-count" style="background:rgba(6,182,212,0.15);color:var(--cyan)">0 Novel</span>
+          </div>
+          <div class="signal-box-body" id="tri-logs-text">No anomalous logs isolated.</div>
+        </div>
+
+        <div class="signal-box metrics">
+          <div class="signal-box-header">
+            <span class="signal-box-title">📈 Metrics Insight</span>
+            <span class="badge" id="tri-metrics-count" style="background:rgba(245,158,11,0.15);color:var(--amber)">0 Alerts</span>
+          </div>
+          <div class="signal-box-body" id="tri-metrics-text">No metric deviations.</div>
+        </div>
+
+        <div class="signal-box traces">
+          <div class="signal-box-header">
+            <span class="signal-box-title">🕸 Traces Insight</span>
+            <span class="badge" id="tri-traces-count" style="background:rgba(168,85,247,0.15);color:var(--purple)">0 Spans</span>
+          </div>
+          <div class="signal-box-body" id="tri-traces-text">No span bottlenecks.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🏆 Ranked Culprit Candidates &amp; Modality Votes</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Service</th>
+              <th>Consensus Score</th>
+              <th>Agreeing Signals</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="ranked-candidates-body">
+            <tr><td colspan="5" class="empty-state">No diagnosis loaded.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab 2: Telemetry Signals -->
+    <div class="panel-body" id="tab-evidence" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📈 Metric Deviations &amp; Resource Slopes</span>
+        </div>
+        <div id="metrics-evidence-body" class="empty-state">No metric evidence available.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🕸 Jaeger Trace Culprit &amp; Latency Bottlenecks</span>
+        </div>
+        <div id="traces-evidence-body" class="empty-state">No trace evidence available.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📋 LogSage Asymmetric Context Snippets (m=3, n=7)</span>
+        </div>
+        <div id="logs-evidence-body" class="empty-state">No log evidence available.</div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Causal Call Graph (DAG) -->
+    <div class="panel-body" id="tab-dag" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🕸 Service Dependency Call Graph</span>
+          <span style="font-size:11px;color:var(--text-muted)">Red: Predicted Culprit · Green Border: Ground Truth</span>
+        </div>
+        <div id="dag-svg-wrap">
+          <svg id="dag-svg" width="600" height="260"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: 4-Way Mode Ablation -->
+    <div class="panel-body" id="tab-comparison" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 Multi-Signal Ablation on this Specific Case</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Predicted Service</th>
+              <th>Top@1</th>
+              <th>Top@3</th>
+              <th>MRR</th>
+              <th>Category</th>
+              <th>Tokens</th>
+            </tr>
+          </thead>
+          <tbody id="case-ablation-body">
+            <tr><td colspan="7" class="empty-state">Loading mode comparison...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab 5: Prompt & Token Budget -->
+    <div class="panel-body" id="tab-prompt" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🔤 Prompt Token Budget Utilization (&lt; 2,500 Limit)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="flex:1;height:8px;background:var(--bg-elevated);border-radius:4px;overflow:hidden">
+            <div id="prompt-bar-fill" style="height:100%;width:0%;background:var(--emerald);transition:width 0.3s"></div>
+          </div>
+          <span class="mono" id="prompt-budget-label" style="font-size:12px">0 / 2400 BPE Tokens</span>
+        </div>
+        <pre class="mono" id="prompt-preview-box" style="background:#080c18;padding:12px;border-radius:6px;border:1px solid var(--border);color:#cbd5e1;max-height:350px;overflow-y:auto;white-space:pre-wrap;font-size:11px">No prompt generated.</pre>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Right: Benchmark Scoreboard -->
+  <aside id="scoreboard">
+    <div class="scoreboard-title">Benchmark Performance (RE2-OB)</div>
+
+    <div class="ablation-mini-card active-mode" id="card-mode-fusion">
+      <div class="am-header">
+        <span class="am-mode-name" style="color:var(--emerald)">⚡ Full Fusion</span>
+        <span class="am-top1" style="color:var(--emerald)">71.1%</span>
+      </div>
+      <div class="am-bar-bg">
+        <div class="am-bar-fill" style="width:71.1%;background:var(--emerald)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);display:flex;justify-content:space-between">
+        <span>Top@3: <b>96.7%</b></span>
+        <span>MRR: <b>0.830</b></span>
+      </div>
+    </div>
+
+    <div class="ablation-mini-card" id="card-mode-logs-metrics">
+      <div class="am-header">
+        <span class="am-mode-name" style="color:var(--amber)">📈 Logs + Metrics</span>
+        <span class="am-top1" style="color:var(--amber)">60.0%</span>
+      </div>
+      <div class="am-bar-bg">
+        <div class="am-bar-fill" style="width:60%;background:var(--amber)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);display:flex;justify-content:space-between">
+        <span>Top@3: <b>93.3%</b></span>
+        <span>MRR: <b>0.748</b></span>
+      </div>
+    </div>
+
+    <div class="ablation-mini-card" id="card-mode-logs-traces">
+      <div class="am-header">
+        <span class="am-mode-name" style="color:var(--purple)">🕸 Logs + Traces</span>
+        <span class="am-top1" style="color:var(--purple)">24.4%</span>
+      </div>
+      <div class="am-bar-bg">
+        <div class="am-bar-fill" style="width:24.4%;background:var(--purple)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);display:flex;justify-content:space-between">
+        <span>Top@3: <b>30.0%</b></span>
+        <span>MRR: <b>0.272</b></span>
+      </div>
+    </div>
+
+    <div class="ablation-mini-card" id="card-mode-logs-only">
+      <div class="am-header">
+        <span class="am-mode-name" style="color:var(--text-secondary)">📋 LogSage (Logs)</span>
+        <span class="am-top1" style="color:var(--text-secondary)">10.0%</span>
+      </div>
+      <div class="am-bar-bg">
+        <div class="am-bar-fill" style="width:10%;background:var(--text-muted)"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-muted);display:flex;justify-content:space-between">
+        <span>Top@3: <b>10.0%</b></span>
+        <span>MRR: <b>0.100</b></span>
+      </div>
+    </div>
+
+    <div style="margin-top:6px">
+      <div class="scoreboard-title" style="margin-bottom:8px">Accuracy by Fault Type</div>
+      <div id="fault-breakdown-list" style="display:flex;flex-direction:column;gap:6px">
+        <!-- Dynamically filled -->
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<script>
+let allCases = [];
+let filteredCases = [];
+let currentCase = null;
+let currentMode = 'fusion';
+let activeFilter = 'all';
+let wsConn = null;
+
+// Escaping helper
+function esc(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Top Mode Switcher ──
+document.querySelectorAll('.mode-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.mode-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentMode = chip.dataset.mode;
+    highlightScoreboardCard(currentMode);
+    loadCases();
+    if (currentCase) selectCase(currentCase.case_id);
+  });
+});
+
+function highlightScoreboardCard(mode) {
+  document.querySelectorAll('.ablation-mini-card').forEach(c => c.classList.remove('active-mode'));
+  const target = document.getElementById(`card-mode-${mode}`);
+  if (target) target.classList.add('active-mode');
+}
+
+// ── Tabs Navigation ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel-body').forEach(p => p.style.display = 'none');
+    btn.classList.add('active');
+    const panel = document.getElementById(`tab-${btn.dataset.tab}`);
+    if (panel) panel.style.display = 'flex';
+  });
+});
+
+// ── Filter Pills ──
+document.querySelectorAll('.filter-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    activeFilter = pill.dataset.filter;
+    applyFilter();
+  });
+});
+
+// ── Load Cases ──
+async function loadCases() {
+  const suite = document.getElementById('filter-suite').value;
+  const fault = document.getElementById('filter-fault').value;
+  let url = `/api/cases?mode=${encodeURIComponent(currentMode)}&limit=500`;
+  if (suite) url += `&suite=${encodeURIComponent(suite)}`;
+  if (fault) url += `&fault_type=${encodeURIComponent(fault)}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    allCases = data.cases || [];
+    updateFilterCounts();
+    applyFilter();
+  } catch (err) {
+    document.getElementById('cases-container').innerHTML = `<div class="empty-state">Failed to load cases: ${esc(err.message)}</div>`;
+  }
+}
+
+function updateFilterCounts() {
+  document.getElementById('count-all').textContent = allCases.length;
+  document.getElementById('count-hit').textContent = allCases.filter(c => c.scored && c.top1_hit).length;
+  document.getElementById('count-miss').textContent = allCases.filter(c => c.scored && !c.top1_hit).length;
+}
+
+function applyFilter() {
+  const q = document.getElementById('search-box').value.trim().toLowerCase();
+  filteredCases = allCases.filter(c => {
+    if (q && !c.case_id.toLowerCase().includes(q) && !(c.fault_service || '').toLowerCase().includes(q)) return false;
+    if (activeFilter === 'hit') return c.scored && c.top1_hit;
+    if (activeFilter === 'miss') return c.scored && !c.top1_hit;
+    if (activeFilter === 'unscored') return !c.scored;
+    return true;
+  });
+  renderCaseList();
+}
+
+function renderCaseList() {
+  const container = document.getElementById('cases-container');
+  if (!filteredCases.length) {
+    container.innerHTML = '<div class="empty-state">No matching incidents found.</div>';
+    return;
+  }
+
+  container.innerHTML = filteredCases.map(c => {
+    const isSelected = currentCase && currentCase.case_id === c.case_id;
+    let badgeHtml = '<span class="case-badge unscored">NEW</span>';
+    if (c.scored) {
+      if (c.top1_hit) badgeHtml = '<span class="case-badge hit">✓ Top-1</span>';
+      else if (c.top3_hit) badgeHtml = '<span class="case-badge top3">✓ Top-3</span>';
+      else badgeHtml = '<span class="case-badge miss">✗ Miss</span>';
+    }
+
+    return `
+      <div class="case-card ${isSelected ? 'selected' : ''}" id="card-${esc(c.case_id)}" onclick="selectCase('${esc(c.case_id)}')">
+        <div class="case-card-header">
+          <span class="case-card-id">${esc(c.case_id)}</span>
+          ${badgeHtml}
+        </div>
+        <div class="case-card-meta">
+          <span>${esc(c.fault_type || 'fault')}</span>
+          <span>·</span>
+          <span>GT: <b>${esc(c.fault_service || 'unknown')}</b></span>
+        </div>
+        ${c.scored ? `<div class="case-card-prediction">Pred: <b>${esc(c.predicted_service)}</b> · ${(c.confidence * 100).toFixed(0)}%</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Select and Inspect Case ──
+async function selectCase(caseId) {
+  currentCase = allCases.find(c => c.case_id === caseId);
+  renderCaseList(); // updates selection border
+  loadAblationComparison(caseId);
+
+  // Set initial inspecting header
+  document.getElementById('banner-status-chip').innerHTML = `<span style="color:var(--cyan)">●</span> INSPECTING`;
+  document.getElementById('banner-service').textContent = caseId;
+  document.getElementById('banner-gt-service').textContent = currentCase ? currentCase.fault_service : '—';
+  document.getElementById('banner-gt-fault').textContent = currentCase ? currentCase.fault_type : '—';
+
+  setTicker(`Loading diagnostic telemetry for ${caseId}...`);
+
+  try {
+    const res = await fetch(`/api/case/${encodeURIComponent(caseId)}/analysis?mode=${encodeURIComponent(currentMode)}`);
+    const data = await res.json();
+    if (data.found) {
+      renderAnalysisArtifact(data);
+    } else {
+      resetDetailsForUnscored(caseId);
+    }
+  } catch (err) {
+    setTicker(`Error loading case: ${err.message}`);
+  }
+}
+
+function setTicker(msg, pulse = true) {
+  document.getElementById('ticker-text').textContent = msg;
+}
+
+// ── Render Analysis Artifact ──
+function renderAnalysisArtifact(payload) {
+  const score = payload.score;
+  const artifact = payload.artifact;
+  const report = payload.report || (artifact ? artifact.report : null);
+  const depGraph = payload.service_dependency_graph || {};
+
+  // Update Hero Banner
+  const banner = document.getElementById('outcome-banner');
+  banner.className = '';
+  if (score) {
+    if (score.top1_hit) {
+      banner.classList.add('status-hit');
+      document.getElementById('banner-status-chip').innerHTML = `<span style="color:var(--emerald)">✓</span> ACCURATE TOP-1 LOCALIZATION`;
+    } else if (score.top3_hit) {
+      banner.classList.add('status-top3');
+      document.getElementById('banner-status-chip').innerHTML = `<span style="color:var(--amber)">⚠</span> LOCALIZED IN TOP-3 CANDIDATES`;
+    } else {
+      banner.classList.add('status-miss');
+      document.getElementById('banner-status-chip').innerHTML = `<span style="color:var(--rose)">✗</span> LOCALIZATION MISMATCH (MISS)`;
+    }
+
+    document.getElementById('banner-service').innerHTML = `
+      <span>${esc(score.predicted_service)}</span>
+      ${score.top1_hit ? `<span class="badge" style="background:var(--emerald);color:#000;font-size:11px">MATCH</span>` : ''}
+    `;
+    document.getElementById('banner-gt-service').textContent = score.ground_truth_service;
+    document.getElementById('banner-gt-fault').textContent = score.ground_truth_fault;
+    document.getElementById('stat-confidence').textContent = `${(Number(score.confidence || 0) * 100).toFixed(0)}%`;
+    document.getElementById('stat-tokens').textContent = `${score.prompt_tokens || payload.prompt_tokens || 0}`;
+    document.getElementById('stat-duration').textContent = score.duration_ms ? `${(score.duration_ms / 1000).toFixed(2)}s` : '—';
+  }
+
+  // Update Pipeline Stepper Durations
+  if (artifact && artifact.stage_timings) {
+    artifact.stage_timings.forEach(st => {
+      const el = document.getElementById(`dur-${st.stage}`);
+      if (el) el.textContent = `${Math.round(st.duration_ms || 0)}ms`;
+    });
+  }
+  setAllStepperNodesDone();
+
+  // Tab 1: Narrative & Triangulation
+  if (report) {
+    document.getElementById('narrative-text').textContent = report.root_cause_summary || 'No narrative provided.';
+    document.getElementById('category-badge').textContent = report.failure_category || 'EC-Unknown';
+
+    const tri = report.evidence_triangulation;
+    if (tri) {
+      document.getElementById('tri-logs-text').textContent = tri.logs_insight || 'No significant log anomalies.';
+      document.getElementById('tri-metrics-text').textContent = tri.metrics_insight || 'Metrics within baseline.';
+      document.getElementById('tri-traces-text').textContent = tri.traces_insight || 'Traces normal.';
+    }
+  }
+
+  // Ranked Candidates Table
+  const candidatesBody = document.getElementById('ranked-candidates-body');
+  const ranked = (score && score.ranked_candidates) ? (Array.isArray(score.ranked_candidates) ? score.ranked_candidates : score.ranked_candidates.split(';').filter(Boolean)) : [];
+  const gtService = (score ? score.ground_truth_service : '').toLowerCase();
+
+  const fusionMap = {};
+  if (artifact?.fusion?.ranked_services) {
+    artifact.fusion.ranked_services.forEach(r => { fusionMap[r.service] = r; });
+  }
+
+  if (ranked.length) {
+    candidatesBody.innerHTML = ranked.map((svc, i) => {
+      const isGt = svc.toLowerCase() === gtService;
+      const fData = fusionMap[svc];
+      const votes = fData ? fData.votes.map(v => `<span class="vote-badge ${v.toLowerCase()}">${esc(v)}</span>`).join('') : '';
+      const scVal = fData ? fData.score.toFixed(2) : '—';
+
+      return `
+        <tr>
+          <td><b class="mono">#${i + 1}</b></td>
+          <td><span class="mono" style="font-weight:700;color:${i===0?'var(--emerald)':'#e2e8f0'}">${esc(svc)}</span></td>
+          <td><span class="mono">${scVal}</span></td>
+          <td>${votes || '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td>${isGt ? '<span class="badge" style="background:rgba(16,185,129,0.2);color:var(--emerald)">Ground Truth</span>' : ''}</td>
+        </tr>
+      `;
+    }).join('');
+  } else {
+    candidatesBody.innerHTML = '<tr><td colspan="5" class="empty-state">No candidates recorded.</td></tr>';
+  }
+
+  // Tab 2: Evidence Deep Dive
+  renderEvidenceTab(artifact);
+
+  // Tab 3: Causal Graph DAG
+  renderDAG(depGraph, score ? score.predicted_service : '', score ? score.ground_truth_service : '');
+
+  // Tab 5: Prompt & Tokens
+  if (artifact && artifact.prompt) {
+    const p = artifact.prompt;
+    const pct = Math.min(100, (p.total_tokens / p.max_tokens) * 100);
+    document.getElementById('prompt-bar-fill').style.width = `${pct}%`;
+    document.getElementById('prompt-budget-label').textContent = `${p.total_tokens} / ${p.max_tokens} BPE Tokens (${pct.toFixed(0)}%)`;
+    document.getElementById('prompt-preview-box').textContent = p.prompt_preview || 'No prompt stored.';
+  }
+
+  setTicker(`Loaded diagnosis for ${payload.case_id} (${payload.source || 'artifact cache'}).`);
+}
+
+function renderEvidenceTab(artifact) {
+  const mBody = document.getElementById('metrics-evidence-body');
+  const tBody = document.getElementById('traces-evidence-body');
+  const lBody = document.getElementById('logs-evidence-body');
+
+  if (!artifact || !artifact.evidence) {
+    mBody.innerHTML = tBody.innerHTML = lBody.innerHTML = '<div class="empty-state">No telemetry evidence stored for this case.</div>';
+    return;
+  }
+
+  const ev = artifact.evidence;
+
+  // Metrics
+  const alerts = ev.metric_evidence?.alerts || [];
+  if (alerts.length) {
+    mBody.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Metric</th>
+            <th>Z-Score</th>
+            <th>Value vs Base</th>
+            <th>Slope</th>
+            <th>Severity</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${alerts.slice(0, 15).map(a => `
+            <tr>
+              <td><b class="mono">${esc(a.service)}</b></td>
+              <td class="mono" style="font-size:11px">${esc(a.metric_name)}</td>
+              <td><span class="mono" style="color:var(--amber);font-weight:700">${Number(a.z_score).toFixed(2)}σ</span></td>
+              <td class="mono">${Number(a.current_value).toFixed(1)} / ${Number(a.baseline_mean).toFixed(1)}</td>
+              <td class="mono">${a.slope_dM_dt != null ? (a.slope_dM_dt/1024).toFixed(1) + ' KB/s' : '—'}</td>
+              <td><span class="badge ${a.severity==='CRITICAL'||a.is_oom_risk?'miss':'top3'}">${esc(a.severity)}</span></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } else {
+    mBody.innerHTML = '<div class="empty-state">No anomalous metric spikes detected.</div>';
+  }
+
+  // Traces
+  const tr = ev.trace_evidence;
+  if (tr && tr.culprit_span) {
+    const sp = tr.culprit_span;
+    tBody.innerHTML = `
+      <div style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.25);border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-weight:700;color:var(--purple)">Deepest Leaf Culprit Span</span>
+          <span class="badge" style="background:var(--purple);color:#fff">Depth ${sp.depth}</span>
+        </div>
+        <div class="mono" style="font-size:13px;font-weight:700">${esc(sp.service_name)} ➔ ${esc(sp.operation_name)}</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">
+          Duration: <b>${sp.duration_ms.toFixed(1)}ms</b> (Self: <b>${sp.self_duration_ms ? sp.self_duration_ms.toFixed(1) : '—'}ms</b>) ·
+          Status: <b>${esc(sp.status_code || sp.error_code || 'ERROR')}</b>
+        </div>
+        ${sp.error_message ? `<div style="color:var(--rose);margin-top:6px;font-size:11px">Message: ${esc(sp.error_message)}</div>` : ''}
+      </div>
+    `;
+  } else {
+    tBody.innerHTML = '<div class="empty-state">No span culprit isolated.</div>';
+  }
+
+  // Logs
+  const logEvs = Object.values(ev.log_evidences || {});
+  const totalSnips = logEvs.reduce((acc, x) => acc + (x.snippets?.length || 0), 0);
+  if (totalSnips > 0) {
+    lBody.innerHTML = logEvs.filter(x => x.snippets?.length).map(x => `
+      <div style="margin-bottom:12px">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--cyan);font-family:var(--font-mono)">
+          ${esc(x.service)} <span style="font-size:11px;color:var(--text-muted)">(${x.snippets.length} snippets, ${x.novel_templates_count} novel)</span>
+        </div>
+        ${x.snippets.slice(0, 4).map(s => `
+          <div style="background:#070b16;border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;font-family:var(--font-mono);font-size:11px;line-height:1.5">
+            <div style="color:var(--text-muted);font-size:10px">Line ${s.line_number} · keyword: <b>${esc(s.matched_keyword || 'novel')}</b></div>
+            ${(s.context_before || []).map(l => `<div style="color:var(--text-muted)">${esc(l)}</div>`).join('')}
+            <div style="color:var(--rose);background:rgba(244,63,94,0.12);padding:2px 4px;border-radius:3px;font-weight:700">${esc(s.target_line)}</div>
+            ${(s.context_after || []).map(l => `<div style="color:var(--text-muted)">${esc(l)}</div>`).join('')}
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } else {
+    lBody.innerHTML = '<div class="empty-state">No log error lines matched Drain3 baseline mining.</div>';
+  }
+}
+
+// ── Tab 4: Cross-Mode Comparison ──
+async function loadAblationComparison(caseId) {
+  const container = document.getElementById('case-ablation-body');
+  try {
+    const res = await fetch(`/api/case/${encodeURIComponent(caseId)}/compare`);
+    const data = await res.json();
+    const rows = (data.modes || []).map(m => {
+      if (!m.scored) return `<tr><td class="mono">${esc(m.mode)}</td><td colspan="6" style="color:var(--text-muted)">Not evaluated</td></tr>`;
+      return `
+        <tr>
+          <td><b style="color:${m.mode==='fusion'?'var(--emerald)':'#e2e8f0'}">${esc(m.mode)}</b></td>
+          <td class="mono">${esc(m.predicted_service)}</td>
+          <td>${m.top1_hit ? '<span class="case-badge hit">✓ @1</span>' : '<span class="case-badge miss">✗</span>'}</td>
+          <td>${m.top3_hit ? '<span class="case-badge top3">✓ @3</span>' : '<span class="case-badge miss">✗</span>'}</td>
+          <td class="mono">${Number(m.mrr || 0).toFixed(3)}</td>
+          <td>${m.fault_match ? '<span style="color:var(--emerald)">✓ Match</span>' : '<span style="color:var(--rose)">✗</span>'}</td>
+          <td class="mono">${m.prompt_tokens || 0}</td>
+        </tr>
+      `;
+    }).join('');
+    container.innerHTML = rows;
+  } catch (err) {
+    container.innerHTML = `<tr><td colspan="7" class="empty-state">Failed: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+// ── Run Live Diagnosis WebSocket Execution ──
+document.getElementById('btn-run-diagnosis').addEventListener('click', () => runDiagnosis(false));
+document.getElementById('btn-recompute').addEventListener('click', () => runDiagnosis(true));
+
+function runDiagnosis(forceRecompute = false) {
+  if (!currentCase) return;
+
+  const caseId = currentCase.case_id;
+  const btnRun = document.getElementById('btn-run-diagnosis');
+  const banner = document.getElementById('outcome-banner');
+
+  btnRun.disabled = true;
+
+  // Visual cues: change banner to vibrant running state!
+  banner.className = 'status-running';
+  document.getElementById('banner-status-chip').innerHTML = `
+    <span style="color:var(--cyan);animation:spin 1s linear infinite">⚡</span> EXECUTING MULTI-SIGNAL RCA...
+  `;
+  document.getElementById('banner-service').textContent = `Diagnosing ${caseId}...`;
+
+  // Highlight case in sidebar
+  const sidebarCard = document.getElementById(`card-${caseId}`);
+  if (sidebarCard) sidebarCard.classList.add('running');
+
+  resetStepper();
+
+  if (wsConn) { wsConn.close(); wsConn = null; }
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws/diagnose`);
+  wsConn = ws;
+
+  ws.onopen = () => {
+    setTicker(`Connecting live WebSocket for ${caseId}...`);
+    ws.send(JSON.stringify({
+      case_id: caseId,
+      mode: currentMode,
+      use_llm: false,
+      force_recompute: forceRecompute,
+    }));
+  };
+
+  ws.onmessage = evt => {
+    const data = JSON.parse(evt.data);
+
+    if (data.stage === 'error') {
+      banner.className = 'status-miss';
+      document.getElementById('banner-status-chip').innerHTML = `✗ ERROR`;
+      document.getElementById('banner-service').textContent = data.detail || 'Execution error';
+      setTicker(`Error: ${data.detail}`);
+      btnRun.disabled = false;
+      if (sidebarCard) sidebarCard.classList.remove('running');
+      return;
+    }
+
+    if (data.stage === 'ingesting') {
+      activateStep('step-ingest');
+      setTicker(data.message || 'Parsing telemetry slices...');
+    } else if (data.stage === 'retrieving') {
+      markStepDone('step-ingest');
+      activateStep('step-metrics');
+      activateStep('step-traces');
+      activateStep('step-logs');
+      setTicker(data.message || 'Extracting anomalies...');
+    } else if (data.stage === 'fusing') {
+      markStepDone('step-metrics');
+      markStepDone('step-traces');
+      markStepDone('step-logs');
+      activateStep('step-fusion');
+      setTicker(data.message || 'Consensus scoring & causal propagation...');
+    } else if (data.stage === 'complete') {
+      setAllStepperNodesDone();
+      renderAnalysisArtifact(data);
+      btnRun.disabled = false;
+      if (sidebarCard) sidebarCard.classList.remove('running');
+      loadCases(); // refresh hit/miss badges
+      loadAblationComparison(caseId);
+      ws.close();
+    }
+  };
+
+  ws.onerror = () => {
+    banner.className = 'status-miss';
+    setTicker('WebSocket connection error.');
+    btnRun.disabled = false;
+    if (sidebarCard) sidebarCard.classList.remove('running');
+  };
+}
+
+function resetStepper() {
+  ['step-ingest', 'step-metrics', 'step-traces', 'step-logs', 'step-fusion'].forEach(id => {
+    const node = document.getElementById(id);
+    node.className = 'step-node';
+  });
+}
+function activateStep(id) {
+  const node = document.getElementById(id);
+  if (node) node.className = 'step-node active';
+}
+function markStepDone(id) {
+  const node = document.getElementById(id);
+  if (node) node.className = 'step-node done';
+}
+function setAllStepperNodesDone() {
+  ['step-ingest', 'step-metrics', 'step-traces', 'step-logs', 'step-fusion'].forEach(id => {
+    markStepDone(id);
+  });
+}
+
+function resetDetailsForUnscored(caseId) {
+  document.getElementById('banner-status-chip').innerHTML = `<span style="color:var(--text-muted)">●</span> UNTESTED INCIDENT`;
+  document.getElementById('banner-service').textContent = caseId;
+  document.getElementById('stat-confidence').textContent = '—';
+  document.getElementById('stat-tokens').textContent = '—';
+  document.getElementById('stat-duration').textContent = '—';
+  document.getElementById('narrative-text').textContent = 'This case has not been analyzed yet. Click "Run Diagnosis" to execute.';
+  document.getElementById('ranked-candidates-body').innerHTML = '<tr><td colspan="5" class="empty-state">Click Run Diagnosis to analyze.</td></tr>';
+  resetStepper();
+}
+
+// ── Render Causal Graph DAG ──
+function renderDAG(graph, predictedService, gtService) {
+  const svg = document.getElementById('dag-svg');
+  svg.innerHTML = '';
+  const nodes = new Set();
+  const edges = [];
+
+  for (const [caller, callees] of Object.entries(graph || {})) {
+    nodes.add(caller);
+    for (const callee of (Array.isArray(callees) ? callees : [])) {
+      nodes.add(callee);
+      edges.push([caller, callee]);
+    }
+  }
+
+  if (!nodes.size) {
+    svg.setAttribute('width', 400); svg.setAttribute('height', 100);
+    svg.innerHTML = '<text x="20" y="45" fill="#64748b" font-size="12">No trace call hierarchy available for this case.</text>';
+    return;
+  }
+
+  // Topological sorting
+  const inDeg = {}, adj = {}, depths = {};
+  nodes.forEach(n => { inDeg[n] = 0; adj[n] = []; });
+  edges.forEach(([a, b]) => { adj[a].push(b); inDeg[b] = (inDeg[b]||0) + 1; });
+  const q = [...nodes].filter(n => inDeg[n] === 0);
+  q.forEach(n => { depths[n] = 0; });
+  let idx = 0;
+  while (idx < q.length) {
+    const cur = q[idx++];
+    for (const nb of adj[cur]) {
+      depths[nb] = Math.max(depths[nb]||0, (depths[cur]||0) + 1);
+      if (--inDeg[nb] === 0) q.push(nb);
+    }
+  }
+  nodes.forEach(n => { if (depths[n] === undefined) depths[n] = 0; });
+
+  const cols = {};
+  nodes.forEach(n => { (cols[depths[n]] = cols[depths[n]] || []).push(n); });
+  const maxD = Math.max(...Object.values(depths), 0);
+  const nodeW = 140, nodeH = 34, colGap = 180, rowGap = 40;
+  const pos = {};
+
+  for (let c = 0; c <= maxD; c++) {
+    (cols[c] || []).forEach((n, r) => { pos[n] = { x: 20 + c * colGap, y: 20 + r * (nodeH + rowGap) }; });
+  }
+
+  svg.setAttribute('width', 40 + (maxD + 1) * colGap + nodeW);
+  svg.setAttribute('height', Math.max(...Object.values(pos).map(p => p.y), 0) + nodeH + 30);
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const defs = document.createElementNS(ns, 'defs');
+  defs.innerHTML = '<marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#3b82f6"/></marker>';
+  svg.appendChild(defs);
+
+  edges.forEach(([a, b]) => {
+    const pa = pos[a], pb = pos[b];
+    if (!pa || !pb) return;
+    const x1 = pa.x + nodeW, y1 = pa.y + nodeH/2, x2 = pb.x, y2 = pb.y + nodeH/2, mx = (x1 + x2)/2;
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+    p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#3b82f6');
+    p.setAttribute('stroke-width', '1.5'); p.setAttribute('marker-end', 'url(#arrow)');
+    svg.appendChild(p);
+  });
+
+  const predLow = (predictedService || '').toLowerCase();
+  const gtLow = (gtService || '').toLowerCase();
+  nodes.forEach(n => {
+    const { x, y } = pos[n];
+    const isPred = n.toLowerCase() === predLow;
+    const isGt = n.toLowerCase() === gtLow;
+
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('x', x); rect.setAttribute('y', y);
+    rect.setAttribute('width', nodeW); rect.setAttribute('height', nodeH);
+    rect.setAttribute('rx', 6);
+    rect.setAttribute('fill', isPred ? 'rgba(244,63,94,0.25)' : depths[n]===0 ? 'rgba(99,102,241,0.2)' : '#151f38');
+    rect.setAttribute('stroke', isGt ? '#10b981' : isPred ? '#f43f5e' : '#223256');
+    rect.setAttribute('stroke-width', (isGt || isPred) ? '2' : '1');
+    svg.appendChild(rect);
+
+    const lbl = document.createElementNS(ns, 'text');
+    lbl.setAttribute('x', x + nodeW/2); lbl.setAttribute('y', y + nodeH/2 + 4);
+    lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('font-size', '11');
+    lbl.setAttribute('font-family', 'var(--font-mono)');
+    lbl.setAttribute('fill', isPred ? '#f43f5e' : isGt ? '#10b981' : '#f8fafc');
+    lbl.textContent = n.length > 17 ? n.slice(0, 15) + '…' : n;
+    svg.appendChild(lbl);
+  });
+}
+
+// ── Load Global Benchmark Scoreboard ──
+async function loadScoreboard() {
+  try {
+    const res = await fetch('/api/compare?modes=logs-only,logs-metrics,logs-traces,fusion');
+    const data = await res.json();
+    const modes = data.modes || [];
+
+    const faultList = document.getElementById('fault-breakdown-list');
+    const fusionMode = modes.find(m => m.mode === 'fusion');
+    if (fusionMode && fusionMode.by_fault_type) {
+      faultList.innerHTML = Object.values(fusionMode.by_fault_type).map(ft => `
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 10px;cursor:pointer" onclick="document.getElementById('filter-fault').value='${esc(ft.fault)}';loadCases()">
+          <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;margin-bottom:2px">
+            <span style="color:#e2e8f0">${esc(ft.label || ft.fault)}</span>
+            <span class="mono" style="color:var(--emerald)">${ft.top1_pct}%</span>
+          </div>
+          <div class="am-bar-bg"><div class="am-bar-fill" style="width:${ft.top1_pct}%;background:var(--emerald)"></div></div>
+        </div>
+      `).join('');
+    }
+  } catch (err) { /* silent */ }
+}
+
+// ── Search & Filter Listeners ──
+document.getElementById('search-box').addEventListener('input', applyFilter);
+document.getElementById('filter-suite').addEventListener('change', loadCases);
+document.getElementById('filter-fault').addEventListener('change', loadCases);
+
+// ── Init ──
+loadCases();
+loadScoreboard();
+</script>
+</body>
+</html>

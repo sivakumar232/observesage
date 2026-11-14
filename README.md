@@ -2,7 +2,7 @@
 
 > **Multi-Signal AI Root Cause Analysis Framework** — Extending LogSage ([arXiv:2506.03691](https://arxiv.org/abs/2506.03691)) with Telemetry-RAG, Topological Causal Fusion, and Robust Statistical Modeling across Logs, Metrics, and Distributed Traces.
 
-[![Tests](https://img.shields.io/badge/pytest-38%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/pytest-48%20passed-brightgreen.svg)]()
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)]()
 [![Pydantic](https://img.shields.io/badge/pydantic-v2-orange.svg)]()
 [![Benchmark](https://img.shields.io/badge/benchmark-RCAEval-purple.svg)]()
@@ -302,44 +302,39 @@ uv run python scripts/evaluate_rcaeval.py --mode fusion --output-csv results/abl
 
 ---
 
-## 6. The 4-Way Ablation Study (Paper Table 1)
+## 6. The 4-Way Ablation Study (Verified `RE2-OB`, 90 Cases)
 
-The evaluation harness automatically compiles results into the publication-ready **Ablation Table**:
+Evaluated locally via `ObservaSagePipeline` (`TELEMETRY_RAG_LOCAL`, `--no-llm`) across all 90 tri-modal `RE2-OB` cases (`cpu`, `mem`, `delay`, `disk`, `loss`, `socket`):
 
-| Configuration | Telemetry Signals | CPU | MEM (OOM) | DELAY | LOSS | Overall Top@1 | Overall MRR |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Config A** | LogSage Baseline (Logs Only) | 81% | **24%** | **21%** | 72% | **57%** | 0.68 |
-| **Config B** | Logs + Metrics | 89% | **91%** | 74% | 77% | **81%** | 0.87 |
-| **Config C** | Logs + Traces | 82% | 44% | **93%** | **89%** | **79%** | 0.86 |
-| **Config D** | **ObservaSage (Full Fusion)** | **92%** | **94%** | **95%** | **91%** | **91%** | **0.95** |
+| Configuration | Telemetry Signals | Top@1 | Top@3 | MRR | Category Acc |
+|---|---|:---:|:---:|:---:|:---:|
+| `logs-only` | LogSage Drain3 Baseline | 10.00% | 10.00% | 0.1000 | 0.00% |
+| `logs-metrics` | Logs + Prometheus/cgroup Metrics | 60.00% | 93.33% | 0.7481 | 54.44% |
+| `logs-traces` | Logs + Jaeger Span DAG | 24.44% | 30.00% | 0.2722 | 26.67% |
+| **`fusion`** | **ObservaSage (Full Tri-Modal Fusion)** | **71.11%** | **96.67%** | **0.8296** | **42.22%** |
 
-### Key Findings & Mathematical Proof:
-1. **LogSage fails on MEM (24%) and DELAY (21%):** Confirms the blind-spot hypothesis — processes killed by kernel OOM write no error logs; latency spikes produce identical logs to normal runs.
-2. **Metrics recover MEM accuracy (91%):** Proves statistical slopes ($dM/dt$) and TimeToOOM alerts are necessary for resource exhaustion.
-3. **Traces recover DELAY accuracy (93%):** Proves span self-duration percentiles and timeout inversion solve intermittent performance degradation.
-4. **ObservaSage achieves 91% overall accuracy and 0.95 MRR:** Confirms multi-signal topological triangulation provides consistent performance across all failure modes.
+### Key Verified Findings:
+1. **Logs alone struggle on infrastructure/resource faults (`10.00%` Top@1):** Confirms that CPU, memory pressure, delay, and socket faults rarely emit localized error logs in microservices.
+2. **Metrics drive strong recovery (`60.00%` Top@1, `93.33%` Top@3):** Z-score, MAD, and memory slope ($dM/dt$) signals narrow down the culprit service reliably.
+3. **Full Tri-Modal Fusion achieves `71.11%` Top@1 and `96.67%` Top@3 (`0.8296` MRR):** Combining logs, metrics, and trace topology outperforms every 1- and 2-signal ablation mode.
 
 ---
 
-## 7. Future Stages & Roadmap
+## 7. Project Stages & Roadmap
 
 ```
-Stage 1: Testbed & Telemetry Adapter  ──► [COMPLETED]
-Stage 2: LogSage Replication & Probes ──► [COMPLETED]
-Stage 3: Robust Metrics & Traces      ──► [COMPLETED]
-Stage 4: Topological Causal Fusion    ──► [COMPLETED]
-Stage 5: Web Dashboard & Live Stream  ──► [NEXT STAGE]
+Stage 1: Testbed & Telemetry Adapter     ──► [COMPLETED]
+Stage 2: LogSage Replication & Probes    ──► [COMPLETED]
+Stage 3: Robust Metrics & Traces         ──► [COMPLETED]
+Stage 4: Topological Causal Fusion       ──► [COMPLETED]
+Stage 5: Artifact Persistence & Web UI   ──► [COMPLETED]
 ```
 
-### Stage 5: Interactive Web Visualization Dashboard (Upcoming)
-- **FastAPI Backend & Interactive Dashboard (`src/api/`):**
-  - Real-time pipeline failure feed with incident status.
-  - Interactive **Call Graph Visualizer**: visualizes Jaeger span DAGs and highlights the DFS leaf culprit service.
-  - **Side-by-Side Diagnostic Comparison**: displays why the LogSage single-signal baseline failed while ObservaSage correctly isolated the root cause.
-- **Real-Time Streaming Telemetry Ingestion:**
-  - Direct OpenTelemetry Collector gRPC exporter endpoint to diagnose running Kubernetes pods on-the-fly.
-- **Closed-Loop Self-Healing:**
-  - Automated execution of validated remediation steps (e.g. rolling back pods, increasing cgroup memory limits via Kubernetes API).
+### Stage 5: Artifact-Backed FastAPI Dashboard (`src/api/`)
+- **Per-Case Diagnostic Artifacts (`results/artifacts/<case_id>/<mode>.json`):** Persists stage timings, localized log snippets, metric alerts, trace culprit spans, fusion votes/scores, token-budgeted prompt previews, and evaluation error buckets.
+- **Interactive Dashboard (`uvicorn src.api.app:app --reload --port 8000`):**
+  - Case browser with hit/miss/unscored filtering and artifact availability indicators.
+  - Per-case inspector for Signals, Fusion & Ranking, hierarchical Call Graph DAG, Prompt & Token budget, Remediation, and 4-mode Cross-Mode Comparison.
 
 ---
 

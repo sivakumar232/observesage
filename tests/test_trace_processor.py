@@ -187,3 +187,70 @@ def test_service_dependency_graph_and_timeout_inversion():
     # 2. Timeout inversion check: currencyservice pinpointed, not frontend
     assert evidence.culprit_service == "currencyservice"
 
+
+def test_baseline_latency_bottleneck_detection():
+    """
+    Verifies that when statusCode=0 (no error tags), TraceProcessor detects
+    latency bottlenecks by comparing self-duration against baseline p99.
+    """
+    processor = TraceProcessor()
+
+    # Build 5 healthy baseline traces (~10ms each)
+    baseline_traces = [
+        Trace(
+            traceID=f"tr_base_{i}",
+            spans=[
+                TraceSpan(
+                    traceID=f"tr_base_{i}",
+                    spanID=f"sp_b_front_{i}",
+                    operationName="/checkout",
+                    startTime=1000,
+                    duration=12000,  # 12ms total (2ms self)
+                    tags=[{"key": "service.name", "value": "frontend"}],
+                ),
+                TraceSpan(
+                    traceID=f"tr_base_{i}",
+                    spanID=f"sp_b_chk_{i}",
+                    operationName="/PlaceOrder",
+                    startTime=1005,
+                    duration=10000,  # 10ms self
+                    tags=[{"key": "service.name", "value": "checkoutservice"}],
+                    references=[{"refType": "CHILD_OF", "traceID": f"tr_base_{i}", "spanID": f"sp_b_front_{i}"}],
+                ),
+            ],
+        )
+        for i in range(5)
+    ]
+
+    # Incident trace: statusCode=0, but checkoutservice self-duration spikes to 250ms (> 2x p99 & > 50ms)
+    incident_trace = Trace(
+        traceID="tr_inc_1",
+        spans=[
+            TraceSpan(
+                traceID="tr_inc_1",
+                spanID="sp_i_front",
+                operationName="/checkout",
+                startTime=2000,
+                duration=255000,  # 255ms total (5ms self -> NOT a bottleneck)
+                tags=[{"key": "service.name", "value": "frontend"}, {"key": "http.status_code", "value": 200}],
+            ),
+            TraceSpan(
+                traceID="tr_inc_1",
+                spanID="sp_i_chk",
+                operationName="/PlaceOrder",
+                startTime=2005,
+                duration=250000,  # 250ms self -> BOTTLENECK
+                tags=[{"key": "service.name", "value": "checkoutservice"}, {"key": "http.status_code", "value": 200}],
+                references=[{"refType": "CHILD_OF", "traceID": "tr_inc_1", "spanID": "sp_i_front"}],
+            ),
+        ],
+    )
+
+    evidence = processor.process([incident_trace], baseline_traces=baseline_traces)
+
+    assert evidence.error_spans_count == 0
+    assert evidence.latency_bottlenecks_count == 1
+    assert evidence.culprit_service == "checkoutservice"
+    assert "Latency Bottlenecks: 1" in evidence.formatted_prompt
+    assert "LATENCY BOTTLENECK" in evidence.call_hierarchy_summary
+

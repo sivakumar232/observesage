@@ -5,7 +5,6 @@ and pinpoints root cause culprit services using DFS leaf traversal and bottlenec
 """
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.schemas.evidence import TraceEvidence, TraceSpanEvidence
 from src.schemas.telemetry import Trace, TraceSpan
@@ -19,14 +18,14 @@ def extract_service_from_span(span: TraceSpan) -> str:
     return "unknown_service"
 
 
-def extract_error_info(span: TraceSpan) -> Tuple[bool, Optional[int], Optional[str], Optional[str]]:
+def extract_error_info(span: TraceSpan) -> tuple[bool, int | None, str | None, str | None]:
     """
     Checks if a span has error status and extracts status code, error code, and error message.
     """
     is_error = False
-    status_code: Optional[int] = None
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
+    status_code: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
     for tag in span.tags:
         k = tag.get("key", "").lower()
@@ -69,8 +68,8 @@ class TraceProcessor:
 
     def process(
         self,
-        incident_traces: List[Trace],
-        baseline_traces: Optional[List[Trace]] = None,
+        incident_traces: list[Trace],
+        baseline_traces: list[Trace] | None = None,
     ) -> TraceEvidence:
         """
         Reconstructs call trees, identifies leaf error culprits, and formats trace evidence.
@@ -82,7 +81,7 @@ class TraceProcessor:
         total_spans = sum(len(t.spans) for t in incident_traces)
 
         # Baseline durations by (service, operation)
-        baseline_durations: Dict[Tuple[str, str], List[float]] = defaultdict(list)
+        baseline_durations: dict[tuple[str, str], list[float]] = defaultdict(list)
         if baseline_traces:
             for trace in baseline_traces:
                 for span in trace.spans:
@@ -92,21 +91,24 @@ class TraceProcessor:
 
         # Evaluate incident traces
         error_spans_count = 0
-        culprit_candidates: Dict[str, int] = defaultdict(int)
-        best_culprit_span: Optional[TraceSpanEvidence] = None
-        root_services: Set[str] = set()
-        service_dep_graph: Dict[str, Set[str]] = defaultdict(set)
+        latency_bottlenecks_count = 0
+        culprit_candidates: dict[str, int] = defaultdict(int)
+        best_culprit_span: TraceSpanEvidence | None = None
+        error_span_evidences: list[TraceSpanEvidence] = []
+        latency_bottleneck_evidences: list[TraceSpanEvidence] = []
+        root_services: set[str] = set()
+        service_dep_graph: dict[str, set[str]] = defaultdict(set)
 
-        failing_trace_hierarchies: List[str] = []
+        failing_trace_hierarchies: list[str] = []
 
         for trace in incident_traces:
             if not trace.spans:
                 continue
 
             # Build adjacency and span map
-            span_map: Dict[str, TraceSpan] = {s.spanID: s for s in trace.spans}
-            children_map: Dict[str, List[str]] = defaultdict(list)
-            parents_map: Dict[str, Optional[str]] = {}
+            span_map: dict[str, TraceSpan] = {s.spanID: s for s in trace.spans}
+            children_map: dict[str, list[str]] = defaultdict(list)
+            parents_map: dict[str, str | None] = {}
 
             for span in trace.spans:
                 parent_id = None
@@ -131,17 +133,12 @@ class TraceProcessor:
             for r in root_spans:
                 root_services.add(extract_service_from_span(r))
 
-            # Compute depths and self-durations via BFS/DFS
-            depths: Dict[str, int] = {}
-            self_durations_ms: Dict[str, float] = {}
-
-            def traverse_depth(span_id: str, current_depth: int):
-                depths[span_id] = current_depth
-                for child_id in children_map.get(span_id, []):
-                    traverse_depth(child_id, current_depth + 1)
+            # Compute depths and self-durations via DFS
+            depths: dict[str, int] = {}
+            self_durations_ms: dict[str, float] = {}
 
             for r in root_spans:
-                traverse_depth(r.spanID, 0)
+                self._traverse_depth(r.spanID, 0, children_map, depths)
 
             for s_id, span in span_map.items():
                 dur_ms = span.duration / 1000.0 if span.duration > 0 else 0.0
@@ -153,7 +150,7 @@ class TraceProcessor:
                 self_durations_ms[s_id] = max(0.0, dur_ms - children_dur_ms)
 
             # Find error spans in this trace
-            trace_error_spans: List[TraceSpan] = []
+            trace_error_spans: list[TraceSpan] = []
             for s in trace.spans:
                 is_err, _, _, _ = extract_error_info(s)
                 if is_err:
@@ -162,7 +159,7 @@ class TraceProcessor:
 
             # Check for timeout / deadline inversion:
             # If a parent failed due to timeout/deadline exceeded, identify bottleneck child
-            bottleneck_child_spans: List[TraceSpan] = []
+            bottleneck_child_spans: list[TraceSpan] = []
             for s in trace_error_spans:
                 is_err, s_code, e_code, e_msg = extract_error_info(s)
                 err_text = f"{e_code or ''} {e_msg or ''}".lower()
@@ -177,52 +174,60 @@ class TraceProcessor:
                         if c_span.duration >= 0.6 * p_dur or self_durations_ms.get(c_id, 0.0) >= 0.5 * (p_dur / 1000.0):
                             bottleneck_child_spans.append(c_span)
 
-            # Combine explicit error spans and timeout bottleneck spans
-            candidate_spans_for_leaf = trace_error_spans + bottleneck_child_spans
+            # Detect latency bottleneck spans vs baseline p99 self-duration (catches CPU/delay faults where statusCode=0)
+            latency_bottleneck_spans: list[TraceSpan] = []
+            if baseline_durations:
+                for s_id, s_dur_ms in self_durations_ms.items():
+                    span = span_map[s_id]
+                    svc = extract_service_from_span(span)
+                    bl_durs = baseline_durations.get((svc, span.operationName), [])
+                    if len(bl_durs) >= 3:
+                        bl_sorted = sorted(bl_durs)
+                        p99_idx = max(0, int(len(bl_sorted) * 0.99) - 1)
+                        p99_ms = bl_sorted[p99_idx]
+                        if s_dur_ms > max(50.0, p99_ms * 2.0):
+                            latency_bottleneck_spans.append(span)
+                            latency_bottlenecks_count += 1
+
+            # Combine explicit error spans, timeout bottleneck spans, and latency bottleneck spans
+            candidate_spans_for_leaf = trace_error_spans + bottleneck_child_spans + latency_bottleneck_spans
+
+            for err_sp in trace_error_spans:
+                if len(error_span_evidences) < 50:
+                    error_span_evidences.append(
+                        self._to_span_evidence(trace.traceID, err_sp, parents_map, self_durations_ms, depths, is_leaf=False)
+                    )
+            for lat_sp in latency_bottleneck_spans:
+                if len(latency_bottleneck_evidences) < 50:
+                    latency_bottleneck_evidences.append(
+                        self._to_span_evidence(trace.traceID, lat_sp, parents_map, self_durations_ms, depths, is_leaf=False)
+                    )
 
             # Leaf culprit extraction:
-            # If multiple error spans, find the one with MAXIMUM depth (deepest leaf)
+            # If multiple anomalous spans, find the one with MAXIMUM depth (deepest leaf)
+            trace_culprit_id: str | None = None
             if candidate_spans_for_leaf:
                 candidate_spans_for_leaf.sort(key=lambda s: depths.get(s.spanID, 0), reverse=True)
                 leaf_span = candidate_spans_for_leaf[0]
+                trace_culprit_id = leaf_span.spanID
                 leaf_svc = extract_service_from_span(leaf_span)
-                culprit_candidates[leaf_svc] += 3  # Higher weight for leaf error
+                culprit_candidates[leaf_svc] += 3  # Higher weight for leaf culprit
 
-                is_err, s_code, e_code, e_msg = extract_error_info(leaf_span)
-                span_ev = TraceSpanEvidence(
-                    trace_id=trace.traceID,
-                    span_id=leaf_span.spanID,
-                    parent_span_id=parents_map.get(leaf_span.spanID),
-                    service_name=leaf_svc,
-                    operation_name=leaf_span.operationName,
-                    duration_ms=leaf_span.duration / 1000.0 if leaf_span.duration > 0 else 0.0,
-                    status_code=s_code,
-                    error_code=e_code,
-                    error_message=e_msg,
-                    is_leaf_culprit=True,
-                    depth=depths.get(leaf_span.spanID, 0),
+                span_ev = self._to_span_evidence(
+                    trace.traceID, leaf_span, parents_map, self_durations_ms, depths, is_leaf=True
                 )
                 if best_culprit_span is None or span_ev.depth > best_culprit_span.depth:
                     best_culprit_span = span_ev
 
-            # Format tree hierarchy for the first few failing traces
-            if trace_error_spans and len(failing_trace_hierarchies) < self.max_traces_to_format:
+            # Format tree hierarchy for the first few failing or bottleneck traces
+            if (trace_error_spans or latency_bottleneck_spans) and len(failing_trace_hierarchies) < self.max_traces_to_format:
                 hierarchy_lines = [f"Trace {trace.traceID}:"]
-
-                def print_subtree(s_id: str, indent: int):
-                    span = span_map[s_id]
-                    svc = extract_service_from_span(span)
-                    dur = span.duration / 1000.0 if span.duration > 0 else 0.0
-                    is_err, sc, _, msg = extract_error_info(span)
-                    err_label = f" [ERROR {sc or ''}]" if is_err else ""
-                    leaf_mark = " <--- [LEAF CULPRIT]" if best_culprit_span and best_culprit_span.span_id == s_id else ""
-                    indent_str = "  " * indent + ("↳ " if indent > 0 else "")
-                    hierarchy_lines.append(f"{indent_str}{svc}:{span.operationName} ({dur:.1f}ms){err_label}{leaf_mark}")
-                    for c_id in children_map.get(s_id, []):
-                        print_subtree(c_id, indent + 1)
-
+                highlight_id = best_culprit_span.span_id if best_culprit_span else trace_culprit_id
+                bottleneck_ids = {s.spanID for s in latency_bottleneck_spans}
                 for r in root_spans:
-                    print_subtree(r.spanID, 0)
+                    self._print_subtree(
+                        r.spanID, 0, span_map, children_map, hierarchy_lines, highlight_id, bottleneck_ids
+                    )
                 failing_trace_hierarchies.append("\n".join(hierarchy_lines))
 
         # Select overall culprit service
@@ -232,10 +237,15 @@ class TraceProcessor:
         elif best_culprit_span:
             culprit_service = best_culprit_span.service_name
 
-        root_service = list(root_services)[0] if root_services else None
+        root_service = next(iter(root_services)) if root_services else None
         call_hierarchy_summary = "\n\n".join(failing_trace_hierarchies)
         formatted_prompt = self._format_prompt(
-            total_traces, error_spans_count, culprit_service, best_culprit_span, call_hierarchy_summary
+            total_traces,
+            error_spans_count,
+            latency_bottlenecks_count,
+            culprit_service,
+            best_culprit_span,
+            call_hierarchy_summary,
         )
         est_tokens = max(1, len(formatted_prompt) // 4)
 
@@ -243,36 +253,102 @@ class TraceProcessor:
             total_traces=total_traces,
             total_spans=total_spans,
             error_spans_count=error_spans_count,
+            latency_bottlenecks_count=latency_bottlenecks_count,
             root_service=root_service,
             culprit_service=culprit_service,
             culprit_span=best_culprit_span,
-            service_dependency_graph={k: sorted(list(v)) for k, v in service_dep_graph.items()},
+            error_spans=error_span_evidences,
+            latency_bottlenecks=latency_bottleneck_evidences,
+            service_dependency_graph={k: sorted(v) for k, v in service_dep_graph.items()},
             call_hierarchy_summary=call_hierarchy_summary,
             formatted_prompt=formatted_prompt,
             estimated_tokens=est_tokens,
         )
 
+    @staticmethod
+    def _to_span_evidence(
+        trace_id: str,
+        span: TraceSpan,
+        parents_map: dict[str, str | None],
+        self_durations_ms: dict[str, float],
+        depths: dict[str, int],
+        is_leaf: bool = False,
+    ) -> TraceSpanEvidence:
+        _is_err, s_code, e_code, e_msg = extract_error_info(span)
+        return TraceSpanEvidence(
+            trace_id=trace_id,
+            span_id=span.spanID,
+            parent_span_id=parents_map.get(span.spanID),
+            service_name=extract_service_from_span(span),
+            operation_name=span.operationName,
+            duration_ms=span.duration / 1000.0 if span.duration > 0 else 0.0,
+            self_duration_ms=self_durations_ms.get(span.spanID, 0.0),
+            status_code=s_code,
+            error_code=e_code,
+            error_message=e_msg,
+            is_leaf_culprit=is_leaf,
+            depth=depths.get(span.spanID, 0),
+        )
+
+    @staticmethod
+    def _traverse_depth(
+        span_id: str,
+        current_depth: int,
+        children_map: dict[str, list[str]],
+        depths: dict[str, int],
+    ) -> None:
+        if span_id in depths:
+            return
+        depths[span_id] = current_depth
+        for child_id in children_map.get(span_id, []):
+            TraceProcessor._traverse_depth(child_id, current_depth + 1, children_map, depths)
+
+    @staticmethod
+    def _print_subtree(
+        s_id: str,
+        indent: int,
+        span_map: dict[str, TraceSpan],
+        children_map: dict[str, list[str]],
+        hierarchy_lines: list[str],
+        best_culprit_span_id: str | None,
+        bottleneck_ids: set[str],
+    ) -> None:
+        span = span_map[s_id]
+        svc = extract_service_from_span(span)
+        dur = span.duration / 1000.0 if span.duration > 0 else 0.0
+        is_err, sc, _, _ = extract_error_info(span)
+        err_label = f" [ERROR {sc or ''}]" if is_err else (" [LATENCY BOTTLENECK]" if s_id in bottleneck_ids else "")
+        leaf_mark = " <--- [LEAF CULPRIT]" if best_culprit_span_id == s_id else ""
+        indent_str = "  " * indent + ("↳ " if indent > 0 else "")
+        hierarchy_lines.append(f"{indent_str}{svc}:{span.operationName} ({dur:.1f}ms){err_label}{leaf_mark}")
+        for c_id in children_map.get(s_id, []):
+            TraceProcessor._print_subtree(
+                c_id, indent + 1, span_map, children_map, hierarchy_lines, best_culprit_span_id, bottleneck_ids
+            )
+
     def _format_prompt(
         self,
         total_traces: int,
         error_spans_count: int,
-        culprit_service: Optional[str],
-        culprit_span: Optional[TraceSpanEvidence],
+        latency_bottlenecks_count: int,
+        culprit_service: str | None,
+        culprit_span: TraceSpanEvidence | None,
         call_hierarchy: str,
     ) -> str:
-        if error_spans_count == 0:
+        if error_spans_count == 0 and latency_bottlenecks_count == 0:
             return f"Evaluated {total_traces} distributed traces. No span error codes or anomalies detected."
 
         lines = [
             "### Distributed Trace Analysis:",
-            f"- Total Traces: {total_traces}, Failing Spans: {error_spans_count}",
+            f"- Total Traces: {total_traces}, Failing Spans: {error_spans_count}, Latency Bottlenecks: {latency_bottlenecks_count}",
         ]
         if culprit_service:
             lines.append(f"- Isolated Culprit Service: '{culprit_service}'")
         if culprit_span:
+            status_label = culprit_span.status_code or ("ERROR" if error_spans_count > 0 else "LATENCY_ANOMALY")
             lines.append(
-                f"- Deepest Leaf Error Span: {culprit_span.service_name}:{culprit_span.operation_name} "
-                f"(status={culprit_span.status_code or 'ERROR'}, duration={culprit_span.duration_ms:.1f}ms, depth={culprit_span.depth})"
+                f"- Deepest Leaf Culprit Span: {culprit_span.service_name}:{culprit_span.operation_name} "
+                f"(status={status_label}, duration={culprit_span.duration_ms:.1f}ms, depth={culprit_span.depth})"
             )
         if call_hierarchy:
             lines.append("\nCall Hierarchy DAG:")

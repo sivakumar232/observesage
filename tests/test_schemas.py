@@ -4,19 +4,17 @@ Unit tests for ObservaSage Pydantic v2 schemas.
 
 import json
 from pathlib import Path
+
 from src.schemas import (
-    PipelineRunMeta,
-    TelemetrySnapshot,
-    LogSnippet,
-    LogEvidence,
-    MetricAlert,
-    MetricEvidence,
-    TraceSpanEvidence,
-    TraceEvidence,
-    FailureCategory,
     EvidenceTriangulation,
-    RemediationStep,
+    FailureCategory,
+    LogEvidence,
+    LogSnippet,
+    MetricAlert,
     RCAReport,
+    RemediationStep,
+    TelemetrySnapshot,
+    TraceSpanEvidence,
 )
 
 

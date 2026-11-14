@@ -10,9 +10,10 @@ Faithfully implements the LogSage preprocessing pipeline (arXiv:2506.03691):
 
 import glob
 import json
+import logging
 import os
-from typing import Dict, List, Optional, Set, Tuple
-from src.log_processor.filter import matches_keyword, expand_asymmetric_context
+
+from src.log_processor.filter import expand_asymmetric_context, matches_keyword
 from src.log_processor.miner import DrainBaselineMiner
 from src.schemas.evidence import LogEvidence, LogSnippet
 from src.schemas.telemetry import TelemetrySnapshot
@@ -63,16 +64,16 @@ class LogSageProcessor:
 
         # Take up to x=3 recent runs
         selected_files = run_files[:x_runs]
-        runs_logs: List[Dict[str, List[str]]] = []
+        runs_logs: list[dict[str, list[str]]] = []
 
         for fpath in selected_files:
             try:
-                with open(fpath, "r") as f:
+                with open(fpath) as f:
                     data = json.load(f)
                     snapshot = TelemetrySnapshot(**data)
                     runs_logs.append(snapshot.logs)
-            except Exception:
-                continue
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                logging.getLogger(__name__).warning("Skipping invalid baseline file %s: %s", fpath, exc)
 
         if not runs_logs:
             return False
@@ -82,7 +83,7 @@ class LogSageProcessor:
         self.is_baseline_ready = True
         return True
 
-    def process_service_logs(self, service: str, raw_lines: List[str]) -> LogEvidence:
+    def process_service_logs(self, service: str, raw_lines: list[str]) -> LogEvidence:
         """
         Processes logs for a single service:
         - Classifies templates with Drain3
@@ -95,10 +96,10 @@ class LogSageProcessor:
             return LogEvidence(service=service)
 
         # Step 1: Drain3 classification and keyword scan
-        error_indices: List[int] = []
-        matched_keywords: Dict[int, Optional[str]] = {}
-        templates: Dict[int, str] = {}
-        novelty_map: Dict[int, bool] = {}
+        error_indices: list[int] = []
+        matched_keywords: dict[int, str | None] = {}
+        templates: dict[int, str] = {}
+        novelty_map: dict[int, bool] = {}
 
         for idx, line in enumerate(raw_lines):
             kw = matches_keyword(line)
@@ -122,14 +123,14 @@ class LogSageProcessor:
             )
 
         # Step 2: Apply asymmetric context expansion (m=3 before, n=7 after)
-        expanded_ranges: List[Tuple[int, int, int]] = []
+        expanded_ranges: list[tuple[int, int, int]] = []
         for target_idx in error_indices:
             start = max(0, target_idx - self.m_before)
             end = min(len(raw_lines) - 1, target_idx + self.n_after)
             expanded_ranges.append((start, target_idx, end))
 
         # Merge overlapping ranges
-        merged_windows: List[Tuple[int, int, List[int]]] = []
+        merged_windows: list[tuple[int, int, list[int]]] = []
         for start, target, end in expanded_ranges:
             if not merged_windows:
                 merged_windows.append((start, end, [target]))
@@ -141,8 +142,8 @@ class LogSageProcessor:
                     merged_windows.append((start, end, [target]))
 
         # Step 3: Build LogSnippets
-        snippets: List[LogSnippet] = []
-        formatted_blocks: List[str] = []
+        snippets: list[LogSnippet] = []
+        formatted_blocks: list[str] = []
 
         for win_start, win_end, targets in merged_windows:
             # Select primary target: prioritize target with explicit keyword match
@@ -186,14 +187,14 @@ class LogSageProcessor:
             estimated_tokens=est_tokens,
         )
 
-    def process_all_logs(self, logs: Dict[str, List[str]]) -> Dict[str, LogEvidence]:
+    def process_all_logs(self, logs: dict[str, list[str]]) -> dict[str, LogEvidence]:
         """
         Processes logs across all microservices and enforces token budget.
         """
-        results: Dict[str, LogEvidence] = {}
+        results: dict[str, LogEvidence] = {}
         total_tokens = 0
 
-        service_evidences: List[LogEvidence] = []
+        service_evidences: list[LogEvidence] = []
         for service, lines in logs.items():
             evidence = self.process_service_logs(service, lines)
             if evidence.snippets:

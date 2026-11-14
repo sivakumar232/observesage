@@ -5,9 +5,9 @@ Verifies connectivity and readiness of Docker containers, Prometheus, and Jaeger
 """
 
 import sys
-import time
-import requests
+
 import docker
+import requests
 from rich.console import Console
 from rich.table import Table
 

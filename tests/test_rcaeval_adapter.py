@@ -10,6 +10,7 @@ Verifies:
 
 import json
 from pathlib import Path
+
 import pytest
 
 from scripts.rcaeval_adapter import (

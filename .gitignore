@@ -1,5 +1,43 @@
+# Environments
 .env
+.env.local
+.venv/
 venv/
+ENV/
+env/
+
+# Python byte code and caches
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ObservaSage Telemetry & Data
+# Ignore captured local pipeline runs
 data/runs/
+# Ignore LLM prompt and response cache
+data/cache/
+# Ignore downloaded benchmark cases (3GB+ downloaded via scripts/download_rcaeval.py)
+# Keep only registry metadata and single sample case used by tests & quickstart
+data/ground_truth/rcaeval/*
+!data/ground_truth/rcaeval/cases.parquet
+!data/ground_truth/rcaeval/re2ob_checkoutservice_cpu_1/
+
+# Evaluation diagnostic artifacts (verbose per-case JSON dumps, 18MB+)
+# The summary evaluation CSVs and paper_table.md in results/ ARE tracked.
+# Only track sample case artifact for dashboard demo.
+results/artifacts/*
+!results/artifacts/re2ob_checkoutservice_cpu_1/
+
+# IDE, OS, and Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

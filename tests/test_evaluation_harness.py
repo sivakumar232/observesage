@@ -144,3 +144,21 @@ def test_diagnosis_pipeline_all_ablation_modes():
         )
         assert report.run_id == "test_ablation_case"
         assert len(report.culprit_services) > 0
+
+
+def test_aggregate_error_buckets_and_markdown():
+    from src.eval.metrics import CaseScore, aggregate_scores, format_ablation_table
+
+    scores = [
+        CaseScore("c1", "svcA", "svcA", ["svcA"], "cpu", "EC-1", True, True, 1.0, True, 0.9, 100),
+        CaseScore("c2", "svcA", "svcB", ["svcB", "svcA"], "cpu", "EC-1", False, True, 0.5, True, 0.8, 100),
+        CaseScore("c3", "svcA", "svcC", ["svcC"], "cpu", "EC-1", False, False, 0.0, True, 0.7, 100),
+        CaseScore("c4", "svcA", "svcA", ["svcA"], "cpu", "EC-2", True, True, 1.0, False, 0.85, 100),
+    ]
+    agg = aggregate_scores(scores)
+    assert agg["error_buckets"]["hit"] == 1
+    assert agg["error_buckets"]["ranking_miss"] == 1
+    assert agg["error_buckets"]["localization_miss"] == 1
+    assert agg["error_buckets"]["category_miss"] == 1
+    md = format_ablation_table(scores, "fusion")
+    assert "Error Buckets:" in md

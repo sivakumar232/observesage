@@ -216,7 +216,7 @@ def test_dynamic_bayesian_confidence_and_hypothesis_scoring():
             snippets=[LogSnippet(service="currencyservice", line_number=1, target_line="error reading rate")],
         )
     }
-    _, cat_weak, _, conf_weak = engine.correlate(log_evidences=log_ev_weak)
+    _, _cat_weak, _, conf_weak = engine.correlate(log_evidences=log_ev_weak)
     assert 0.50 <= conf_weak <= 0.75
 
     # Strong tri-modal corroboration
@@ -263,5 +263,40 @@ def test_dynamic_bayesian_confidence_and_hypothesis_scoring():
     assert conf_strong >= 0.90
     assert cat_strong == FailureCategory.EC_1_OOM
     assert ranked[0] == "currencyservice"
+
+
+def test_ec4_silent_corruption_and_combined_token_ceiling():
+    """
+    Verifies:
+    1. EC_4_SILENT is reachable when telemetry is silent or logs report data corruption.
+    2. SYSTEM_PROMPT + user prompt combined strictly stays under 2,500 BPE tokens.
+    """
+    from src.llm.prompt import SYSTEM_PROMPT
+
+    engine = FusionEngine()
+
+    # Case A: Silent failure (no error logs, no metric alerts, no trace errors)
+    _, cat_silent, _, _ = engine.correlate(log_evidences={})
+    assert cat_silent == FailureCategory.EC_4_SILENT
+
+    # Case B: Combined SYSTEM_PROMPT + max-budget user prompt < 2,500 BPE tokens
+    huge_log = "2024-01-01T00:00:00Z [ERROR] Unexpected payload mismatch in cart total\n" * 400
+    log_ev = {
+        "cartservice": LogEvidence(
+            service="cartservice",
+            total_raw_lines=400,
+            novel_templates_count=3,
+            snippets=[LogSnippet(service="cartservice", line_number=1, target_line="payload mismatch", context_after=[])],
+            formatted_prompt=huge_log,
+        )
+    }
+    user_prompt = build_multimodal_prompt(
+        run_id="run_budget_combined_001",
+        log_evidences=log_ev,
+        mode="fusion",
+        max_total_tokens=2400,
+    )
+    combined_tokens = count_bpe_tokens(SYSTEM_PROMPT) + count_bpe_tokens(user_prompt)
+    assert combined_tokens < 2500
 
 

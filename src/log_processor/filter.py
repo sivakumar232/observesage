@@ -1,6 +1,4 @@
 import re
-from typing import List, Optional, Tuple
-
 
 # Exact keywords defined in LogSage paper
 LOGSAGE_KEYWORDS: tuple[str, ...] = (
@@ -19,7 +17,7 @@ LOGSAGE_KEYWORDS: tuple[str, ...] = (
 )
 
 
-def matches_keyword(line: str) -> Optional[str]:
+def matches_keyword(line: str) -> str | None:
     """
     Checks if a line contains any of the LogSage keywords (case-insensitive).
     Returns the first matched keyword, or None.
@@ -42,7 +40,7 @@ def is_benign_probe(line: str) -> bool:
     ])
 
 
-def extract_correlation_tag(line: str) -> Optional[str]:
+def extract_correlation_tag(line: str) -> str | None:
     """
     Extracts trace_id, request_id, or thread identifier from structured or semi-structured log lines.
     """
@@ -73,13 +71,13 @@ def is_stack_trace_continuation(line: str) -> bool:
 
 
 def expand_asymmetric_context(
-    lines: List[str],
+    lines: list[str],
     target_idx: int,
     m: int = 3,
     n: int = 7,
     filter_probes: bool = False,
     dynamic_stack_trace: bool = False,
-) -> Tuple[List[str], str, List[str]]:
+) -> tuple[list[str], str, list[str]]:
     """
     Applies asymmetric context expansion around a target log line:
       - m lines before (default: 3)
@@ -104,7 +102,7 @@ def expand_asymmetric_context(
         return context_before, target_line, context_after
 
     # Context before: collect up to m non-probe lines
-    context_before: List[str] = []
+    context_before: list[str] = []
     curr = target_idx - 1
     while curr >= 0 and len(context_before) < m:
         if not (filter_probes and is_benign_probe(lines[curr])):
@@ -112,7 +110,7 @@ def expand_asymmetric_context(
         curr -= 1
 
     # Context after: collect up to n non-probe lines, plus dynamic stack trace continuation
-    context_after: List[str] = []
+    context_after: list[str] = []
     curr = target_idx + 1
     max_limit = n + 15 if dynamic_stack_trace else n
 
@@ -122,9 +120,7 @@ def expand_asymmetric_context(
             curr += 1
             continue
 
-        if len(context_after) < n:
-            context_after.append(line)
-        elif dynamic_stack_trace and len(context_after) < max_limit and is_stack_trace_continuation(line):
+        if len(context_after) < n or dynamic_stack_trace and len(context_after) < max_limit and is_stack_trace_continuation(line):
             context_after.append(line)
         else:
             break

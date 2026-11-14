@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "re2ob_checkoutservice_cpu_1",
+  "mode": "logs-only",
+  "engine_type": "TELEMETRY_RAG_LOCAL",
+  "created_at": "2026-11-12T13:56:07.820233+00:00",
+  "source": "live",
+  "case_metadata": {
+    "run_id": "re2ob_checkoutservice_cpu_1",
+    "scenario": "rcaeval_cpu",
+    "log_services_raw": 10,
+    "metric_series_raw": 72,
+    "traces_raw": 2924
+  },
+  "stage_timings": [
+    {
+      "stage": "ingesting",
+      "status": "ok",
+      "duration_ms": 4108.15,
+      "detail": null
+    },
+    {
+      "stage": "retrieving",
+      "status": "ok",
+      "duration_ms": 5383.73,
+      "detail": null
+    },
+    {
+      "stage": "diagnosing",
+      "status": "fallback",
+      "duration_ms": 0.05,
+      "detail": "LLM disabled (--no-llm)"
+    },
+    {
+      "stage": "scoring",
+      "status": "ok",
+      "duration_ms": 0.08,
+      "detail": null
+    }
+  ],
+  "evidence": {
+    "log_evidences": {},
+    "metric_evidence": null,
+    "trace_evidence": null,
+    "summary_counts": {
+      "log_services": 0,
+      "log_snippets": 0,
+      "novel_templates": 0,
+      "metric_alerts": 0,
+      "oom_alerts": 0,
+      "trace_total": 0,
+      "trace_spans": 0,
+      "trace_errors": 0,
+      "trace_bottlenecks": 0
+    }
+  },
+  "fusion": {
+    "ranked_services": [],
+    "signal_votes": {
+      "LOGS": [],
+      "METRICS": [],
+      "TRACES": []
+    },
+    "category_likelihoods": {
+      "EC-1: OOM / Resource Exhaustion": 0.1,
+      "EC-2: Flaky / Intermittent Latency": 0.1,
+      "EC-3: Cascading Service Crash": 0.1,
+      "EC-4: Silent Data Corruption": 4.05,
+      "EC-5: Infrastructure Drift / Network Partition": 0.1,
+      "CODE_BUG: Application Exception / Logic Error": 0.1
+    },
+    "hypothesized_category": "EC-4: Silent Data Corruption",
+    "initial_confidence": 0.5
+  },
+  "prompt": {
+    "max_tokens": 2400,
+    "total_tokens": 41,
+    "logs_tokens": 0,
+    "metrics_tokens": 0,
+    "traces_tokens": 0,
+    "prompt_preview": "### Incident Reference ID: re2ob_checkoutservice_cpu_1\n\n\nAnalyze the telemetry evidence above, triangulate signals across modalities using the dependency topology, and produce the structured Root Cause Analysis report."
+  },
+  "report": {
+    "run_id": "re2ob_checkoutservice_cpu_1",
+    "scenario": "rcaeval_cpu",
+    "root_cause_service": "unknown",
+    "culprit_services": [
+      "unknown"
+    ],
+    "failure_category": "EC-4: Silent Data Corruption",
+    "confidence_score": 0.5,
+    "root_cause_summary": "Telemetry-RAG localized root cause to 'unknown' failing under EC-4: Silent Data Corruption.",
+    "evidence_triangulation": {
+      "primary_signal": "FUSION",
+      "logs_insight": "No log evidence evaluated.",
+      "metrics_insight": "Metrics evaluated within normal bounds (no Z-score anomalies).",
+      "traces_insight": "Distributed traces show no failing spans or HTTP/gRPC error tags.",
+      "triangulation_reasoning": "Multi-signal correlation localized root cause to 'unknown' under category EC-4: Silent Data Corruption. Cross-modal consensus verified across 0 telemetry modality/modalities (Primary: FUSION)."
+    },
+    "culprit_trace_id": null,
+    "culprit_span_id": null,
+    "remediation_steps": [],
+    "prompt_tokens_used": 41,
+    "total_tokens_used": 0
+  },
+  "evaluation": {
+    "case_id": "re2ob_checkoutservice_cpu_1",
+    "ground_truth_service": "checkoutservice",
+    "predicted_service": "unknown",
+    "ranked_candidates": [
+      "unknown"
+    ],
+    "ground_truth_fault": "cpu",
+    "predicted_category": "EC-4: Silent Data Corruption",
+    "top1_hit": false,
+    "top3_hit": false,
+    "mrr": 0.0,
+    "fault_match": false,
+    "error_bucket": "localization_and_category_miss",
+    "confidence": 0.5,
+    "prompt_tokens": 41,
+    "duration_ms": 9492.15,
+    "engine_type": "TELEMETRY_RAG_LOCAL"
+  }
+}

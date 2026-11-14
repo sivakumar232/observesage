@@ -26,16 +26,16 @@ Fault Scenarios by Edge Case Category:
   UTIL  clear                         → Restore all containers and flags to healthy defaults
 """
 
+import argparse
+import json
+import subprocess
 import sys
 import time
-import json
-import argparse
-import subprocess
-import requests
+
 import docker
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 console = Console()
 
@@ -315,7 +315,7 @@ def _tc_netem(target: str, delay_ms: int, jitter_ms: int = 0, loss_pct: int = 0)
         console.print(f"  [yellow]Network degraded:[/yellow] {target} → {desc.strip()}")
     except Exception as e:
         console.print(f"  [dim]tc netem not available (container may not have iproute2): {e}[/dim]")
-        console.print(f"  [dim]Tip: Add 'iproute2' to container image or use flagd-based faults instead.[/dim]")
+        console.print("  [dim]Tip: Add 'iproute2' to container image or use flagd-based faults instead.[/dim]")
 
 
 def _clear_tc_netem(target: str) -> None:
@@ -431,7 +431,7 @@ def run_scenario(name: str) -> None:
     s = SCENARIOS[name]
     console.print(f"\n[bold yellow]┌─ Injecting Fault: [white]{name}[/white] ([cyan]{s['edge_case']}[/cyan])[/bold yellow]")
     console.print(f"[bold yellow]│  {s['description']}[/bold yellow]")
-    console.print(f"[bold yellow]└─────────────────────────────────────────────[/bold yellow]\n")
+    console.print("[bold yellow]└─────────────────────────────────────────────[/bold yellow]\n")
 
     client = get_docker_client()
     method = s["method"]
@@ -458,10 +458,10 @@ def run_scenario(name: str) -> None:
         _clear_all(client)
         return
 
-    console.print(f"\n[bold green]✔ Fault injected.[/bold green] Now run the pipeline to trigger the failure:")
+    console.print("\n[bold green]✔ Fault injected.[/bold green] Now run the pipeline to trigger the failure:")
     console.print(f"  [bold white]uv run python scripts/run_pipeline.py --scenario {name}[/bold white]")
-    console.print(f"\n[dim]After capturing telemetry, restore with:[/dim]")
-    console.print(f"  [bold white]uv run python scripts/inject_fault.py --scenario clear[/bold white]\n")
+    console.print("\n[dim]After capturing telemetry, restore with:[/dim]")
+    console.print("  [bold white]uv run python scripts/inject_fault.py --scenario clear[/bold white]\n")
 
 
 def list_scenarios() -> None:

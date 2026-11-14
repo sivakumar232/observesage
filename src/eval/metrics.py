@@ -4,11 +4,14 @@ Computes Top@1 Accuracy, Top@3 Accuracy, Mean Reciprocal Rank (MRR),
 and fault category accuracy across benchmark test cases.
 """
 
+import csv
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any
 
 from src.eval.taxonomy import is_fault_category_match
+from src.schemas.artifact import classify_error_bucket
 from src.schemas.rca_report import RCAReport
 
 
@@ -17,7 +20,7 @@ class CaseScore:
     case_id: str
     ground_truth_service: str
     predicted_service: str
-    ranked_candidates: List[str]
+    ranked_candidates: list[str]
     ground_truth_fault: str
     predicted_category: str
     top1_hit: bool
@@ -29,7 +32,7 @@ class CaseScore:
     duration_ms: float = 0.0
     engine_type: str = "LIVE_LLM"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["ranked_candidates"] = ";".join(self.ranked_candidates)
         return d
@@ -87,7 +90,7 @@ def score_single_case(
     )
 
 
-def aggregate_scores(scores: List[CaseScore]) -> Dict[str, Any]:
+def aggregate_scores(scores: list[CaseScore]) -> dict[str, Any]:
     """
     Computes overall summary statistics and breakdown by ground-truth fault type.
     """
@@ -98,6 +101,7 @@ def aggregate_scores(scores: List[CaseScore]) -> Dict[str, Any]:
             "overall_top3": 0.0,
             "overall_mrr": 0.0,
             "overall_fault_acc": 0.0,
+            "error_buckets": {},
             "by_fault_type": {},
         }
 
@@ -107,13 +111,17 @@ def aggregate_scores(scores: List[CaseScore]) -> Dict[str, Any]:
     mean_mrr = sum(s.mrr for s in scores) / total
     fault_acc = sum(1 for s in scores if s.fault_match) / total
 
+    buckets: dict[str, int] = defaultdict(int)
+    for s in scores:
+        buckets[classify_error_bucket(s.top1_hit, s.top3_hit, s.fault_match)] += 1
+
     # Group by fault type
-    by_fault: Dict[str, List[CaseScore]] = defaultdict(list)
+    by_fault: dict[str, list[CaseScore]] = defaultdict(list)
     for s in scores:
         ft = s.ground_truth_fault.upper() if s.ground_truth_fault else "UNKNOWN"
         by_fault[ft].append(s)
 
-    fault_summary: Dict[str, Dict[str, float]] = {}
+    fault_summary: dict[str, dict[str, float]] = {}
     for ft, group in sorted(by_fault.items()):
         n = len(group)
         fault_summary[ft] = {
@@ -130,11 +138,12 @@ def aggregate_scores(scores: List[CaseScore]) -> Dict[str, Any]:
         "overall_top3": top3_acc,
         "overall_mrr": mean_mrr,
         "overall_fault_acc": fault_acc,
+        "error_buckets": dict(buckets),
         "by_fault_type": fault_summary,
     }
 
 
-def format_ablation_table(scores: List[CaseScore], mode_label: str) -> str:
+def format_ablation_table(scores: list[CaseScore], mode_label: str) -> str:
     """Renders a GitHub-flavored Markdown table of results for research paper inclusion."""
     summary = aggregate_scores(scores)
     lines = [
@@ -156,5 +165,57 @@ def format_ablation_table(scores: List[CaseScore], mode_label: str) -> str:
         f"| **Overall** | **{summary['total_cases']}** | **{summary['overall_top1']:.2%}** | "
         f"**{summary['overall_top3']:.2%}** | **{summary['overall_mrr']:.3f}** | **{summary['overall_fault_acc']:.2%}** |"
     )
+    if summary.get("error_buckets"):
+        bucket_str = ", ".join(f"`{k}`={v}" for k, v in sorted(summary["error_buckets"].items()))
+        lines.append(f"\n- Error Buckets: {bucket_str}")
 
     return "\n".join(lines)
+
+
+def export_case_comparison_csv(
+    results_by_mode: dict[str, list[CaseScore]],
+    csv_path: Path,
+    artifacts_root: Path | None = None,
+) -> Path:
+    """
+    Exports a unified per-case cross-mode comparison CSV linking each case across
+    all evaluated ablation modes and their persisted artifact paths.
+    """
+    modes = list(results_by_mode.keys())
+    by_case: dict[str, dict[str, CaseScore]] = defaultdict(dict)
+    for mode, scores in results_by_mode.items():
+        for sc in scores:
+            by_case[sc.case_id][mode] = sc
+
+    fieldnames = ["case_id", "ground_truth_service", "ground_truth_fault"]
+    for m in modes:
+        slug = m.replace("-", "_")
+        fieldnames.extend([f"{slug}_pred", f"{slug}_top1", f"{slug}_mrr", f"{slug}_bucket"])
+        if artifacts_root is not None:
+            fieldnames.append(f"{slug}_artifact")
+
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(csv_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for cid in sorted(by_case.keys()):
+            mode_map = by_case[cid]
+            first = next(iter(mode_map.values()))
+            row: dict[str, Any] = {
+                "case_id": cid,
+                "ground_truth_service": first.ground_truth_service,
+                "ground_truth_fault": first.ground_truth_fault,
+            }
+            for m in modes:
+                slug = m.replace("-", "_")
+                sc = mode_map.get(m)
+                if sc is not None:
+                    row[f"{slug}_pred"] = sc.predicted_service
+                    row[f"{slug}_top1"] = sc.top1_hit
+                    row[f"{slug}_mrr"] = sc.mrr
+                    row[f"{slug}_bucket"] = classify_error_bucket(sc.top1_hit, sc.top3_hit, sc.fault_match)
+                    if artifacts_root is not None:
+                        art = artifacts_root / "artifacts" / cid / f"{slug}.json"
+                        row[f"{slug}_artifact"] = str(art) if art.exists() else ""
+            writer.writerow(row)
+    return csv_path

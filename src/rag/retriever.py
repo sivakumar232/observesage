@@ -8,17 +8,17 @@ Retrieves and indexes localized anomaly context across Logs, Metrics, and Traces
 Synthesizes retrieved signals into a bounded multimodal RAG prompt strictly under 2,500 BPE tokens.
 """
 
-from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
+from src.fusion import FusionEngine
+from src.llm.prompt import build_multimodal_prompt_with_breakdown, count_bpe_tokens
 from src.log_processor import LogSageProcessor
 from src.metrics_processor import MetricsProcessor
-from src.trace_processor import TraceProcessor
-from src.fusion import FusionEngine
-from src.llm.prompt import build_multimodal_prompt, count_bpe_tokens
 from src.schemas.evidence import LogEvidence, MetricEvidence, TraceEvidence
 from src.schemas.rca_report import EvidenceTriangulation, FailureCategory
 from src.schemas.telemetry import TelemetrySnapshot
+from src.trace_processor import TraceProcessor
 
 
 @dataclass
@@ -28,13 +28,15 @@ class RetrievedRAGContext:
     scenario: str
     rag_prompt: str
     token_count: int
-    candidate_services: List[str]
+    candidate_services: list[str]
     hypothesized_category: FailureCategory
     triangulation: EvidenceTriangulation
-    log_evidences: Dict[str, LogEvidence]
-    metric_evidence: Optional[MetricEvidence]
-    trace_evidence: Optional[TraceEvidence]
+    log_evidences: dict[str, LogEvidence]
+    metric_evidence: MetricEvidence | None
+    trace_evidence: TraceEvidence | None
     confidence: float = 0.70
+    fusion_debug: dict[str, Any] = field(default_factory=dict)
+    prompt_section_tokens: dict[str, int] = field(default_factory=dict)
 
 
 class TelemetryRAGRetriever:
@@ -50,7 +52,7 @@ class TelemetryRAGRetriever:
         oom_slope_threshold_bytes_per_sec: float = 50000.0,
     ):
         self.max_prompt_tokens = max_prompt_tokens
-        self.log_processor = LogSageProcessor()
+        # Note: LogSageProcessor is instantiated per retrieve() call to prevent Drain3 state bleed.
         self.metrics_processor = MetricsProcessor(
             z_threshold=z_threshold,
             oom_slope_threshold_bytes_per_sec=oom_slope_threshold_bytes_per_sec,
@@ -67,16 +69,18 @@ class TelemetryRAGRetriever:
         Executes multi-modal retrieval across all telemetry signals in the snapshot.
         """
         # 1. Log Retrieval (LogSage Drain3 + Asymmetric Context Expansion)
+        # Instantiate a fresh LogSageProcessor per case to prevent Drain3 cluster state bleeding across cases
+        log_processor = LogSageProcessor()
         if snapshot.baseline and snapshot.baseline.logs:
-            self.log_processor.miner.train_baseline_from_runs([snapshot.baseline.logs])
-            self.log_processor.is_baseline_ready = True
+            log_processor.miner.train_baseline_from_runs([snapshot.baseline.logs])
+            log_processor.is_baseline_ready = True
         else:
-            self.log_processor.load_or_train_baselines()
+            log_processor.load_or_train_baselines()
 
-        log_evidences = self.log_processor.process_all_logs(snapshot.logs)
+        log_evidences = log_processor.process_all_logs(snapshot.logs)
 
         # 2. Metric Retrieval (Z-score spike detection & memory slope)
-        metric_evidence: Optional[MetricEvidence] = None
+        metric_evidence: MetricEvidence | None = None
         if mode in ["logs-metrics", "fusion"]:
             metric_evidence = self.metrics_processor.process(
                 incident_metrics=snapshot.metrics,
@@ -84,7 +88,7 @@ class TelemetryRAGRetriever:
             )
 
         # 3. Trace Retrieval (Jaeger DAG & DFS leaf culprit)
-        trace_evidence: Optional[TraceEvidence] = None
+        trace_evidence: TraceEvidence | None = None
         if mode in ["logs-traces", "fusion"]:
             trace_evidence = self.trace_processor.process(
                 incident_traces=snapshot.traces,
@@ -92,14 +96,16 @@ class TelemetryRAGRetriever:
             )
 
         # 4. Multi-Signal Evidence Triangulation & Candidate Scoring
-        ranked_candidates, failure_cat, triangulation, initial_conf = self.fusion_engine.correlate(
-            log_evidences=log_evidences,
-            metric_evidence=metric_evidence,
-            trace_evidence=trace_evidence,
+        ranked_candidates, failure_cat, triangulation, initial_conf, fusion_debug = (
+            self.fusion_engine.correlate_with_debug(
+                log_evidences=log_evidences,
+                metric_evidence=metric_evidence,
+                trace_evidence=trace_evidence,
+            )
         )
 
         # 5. RAG Prompt Assembly with Strict Token Budget Guarantee
-        rag_prompt = build_multimodal_prompt(
+        rag_prompt, section_tokens = build_multimodal_prompt_with_breakdown(
             run_id=snapshot.run_id,
             log_evidences=log_evidences,
             metric_evidence=metric_evidence,
@@ -108,7 +114,7 @@ class TelemetryRAGRetriever:
             max_total_tokens=self.max_prompt_tokens,
         )
 
-        token_count = count_bpe_tokens(rag_prompt)
+        token_count = section_tokens.get("total") or count_bpe_tokens(rag_prompt)
         scenario = snapshot.metadata.scenario if snapshot.metadata else "unknown"
 
         return RetrievedRAGContext(
@@ -123,4 +129,6 @@ class TelemetryRAGRetriever:
             metric_evidence=metric_evidence,
             trace_evidence=trace_evidence,
             confidence=initial_conf,
+            fusion_debug=fusion_debug,
+            prompt_section_tokens=section_tokens,
         )

@@ -5,21 +5,22 @@ Includes schema validation recovery retry loop and strict evaluation gating (zer
 """
 
 import json
+import logging
 import os
-import re
-from typing import Optional, List
+import time
+from typing import Any
+
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from src.schemas.rca_report import (
-    EvidenceTriangulation,
-    FailureCategory,
-    RCAReport,
-    RemediationStep,
-)
 from src.llm.prompt import SYSTEM_PROMPT
+from src.schemas.rca_report import (
+    RCAReport,
+)
 
 load_dotenv()
+
+_logger = logging.getLogger(__name__)
 
 
 class GeminiRCAClient:
@@ -27,22 +28,60 @@ class GeminiRCAClient:
     Client interface for querying Gemini models with structured JSON output and schema retry loop.
     """
 
-    def __init__(self, model_name: Optional[str] = None, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        model_name: str | None = None,
+        api_key: str | None = None,
+        timeout_seconds: float = 30.0,
+        max_api_retries: int = 3,
+    ):
         self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.timeout_seconds = timeout_seconds
+        self.max_api_retries = max_api_retries
         self._genai_client = None
 
         if self.api_key and self.api_key != "your_gemini_api_key_here":
             try:
                 from google import genai
-                self._genai_client = genai.Client(api_key=self.api_key)
-            except Exception:
+                from google.genai import types
+
+                http_opts = types.HttpOptions(timeout=int(self.timeout_seconds * 1000))
+                self._genai_client = genai.Client(api_key=self.api_key, http_options=http_opts)
+            except (ImportError, ValueError, RuntimeError) as exc:
+                _logger.warning("Failed to initialize Google GenAI client: %s", exc)
                 self._genai_client = None
 
     @property
     def is_configured(self) -> bool:
         """Returns True if a live Gemini API key is configured."""
         return self._genai_client is not None
+
+    def _generate_with_backoff(self, contents: list[str], config: Any) -> Any:
+        """Calls Gemini generate_content with exponential backoff on transient/rate-limit errors."""
+        from google.genai.errors import APIError
+
+        assert self._genai_client is not None
+        last_exc: Exception | None = None
+        for attempt in range(self.max_api_retries + 1):
+            try:
+                return self._genai_client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config,
+                )
+            except (APIError, TimeoutError, OSError, RuntimeError) as exc:
+                last_exc = exc
+                err_str = str(exc).lower()
+                is_transient = any(
+                    k in err_str for k in ("429", "rate", "quota", "503", "timeout", "unavailable", "overloaded")
+                )
+                if not is_transient or attempt >= self.max_api_retries:
+                    raise
+                delay = 2.0 * (2.0**attempt)
+                _logger.warning("Gemini API transient error (%s); retrying in %.1fs...", exc, delay)
+                time.sleep(delay)
+        raise RuntimeError(f"Gemini API call failed: {last_exc}")
 
     def diagnose(
         self,
@@ -71,11 +110,7 @@ class GeminiRCAClient:
             response_schema=RCAReport,
         )
 
-        response = self._genai_client.models.generate_content(
-            model=self.model_name,
-            contents=[rag_prompt],
-            config=config,
-        )
+        response = self._generate_with_backoff(contents=[rag_prompt], config=config)
 
         last_error = None
         raw_text = response.text or "{}"
@@ -94,8 +129,7 @@ class GeminiRCAClient:
                         f"Previous output caused validation error: {err}.\n"
                         f"Output JSON must strictly conform to the RCAReport schema."
                     )
-                    retry_resp = self._genai_client.models.generate_content(
-                        model=self.model_name,
+                    retry_resp = self._generate_with_backoff(
                         contents=[rag_prompt, raw_text, retry_msg],
                         config=config,
                     )

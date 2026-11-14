@@ -1,0 +1,2 @@
+case_id,ground_truth_service,predicted_service,ranked_candidates,ground_truth_fault,predicted_category,top1_hit,top3_hit,mrr,fault_match,confidence,prompt_tokens,duration_ms,engine_type
+re2ob_checkoutservice_cpu_1,checkoutservice,checkoutservice,checkoutservice,cpu,EC-2: Flaky / Intermittent Latency,True,True,1.0,True,0.95,865,25864.571571350098,LIVE_LLM

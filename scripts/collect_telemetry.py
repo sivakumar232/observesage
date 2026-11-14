@@ -8,13 +8,14 @@ Given a run ID and time window [t_start, t_end]:
 Saves a unified run snapshot to data/runs/<status>/<run_id>_telemetry.json
 """
 
-import sys
-import os
-import json
 import argparse
 import datetime
-import requests
+import json
+import os
+import sys
+
 import docker
+import requests
 from rich.console import Console
 
 console = Console()
@@ -41,7 +42,7 @@ def _jaeger_service_variants(container_name: str) -> list[str]:
     return [
         container_name,
         f"unknown_service:{container_name}",
-        f"unknown_service:node",  # JS services (frontend, emailservice) show as this
+        "unknown_service:node",  # JS services (frontend, emailservice) show as this
     ]
 
 def collect_logs(client, services, start_time: datetime.datetime, end_time: datetime.datetime):
@@ -200,7 +201,7 @@ def main():
     telemetry_payload = {
         "run_id": run_id,
         "metadata": meta,
-        "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "captured_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "telemetry": {
             "logs": logs,
             "metrics": metrics,

@@ -1,0 +1,91 @@
+case_id,ground_truth_service,predicted_service,ranked_candidates,ground_truth_fault,predicted_category,top1_hit,top3_hit,mrr,fault_match,confidence,prompt_tokens,duration_ms,engine_type
+re2ob_checkoutservice_cpu_1,checkoutservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,14682.34,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_cpu_2,checkoutservice,redis,redis;adservice;frontend,cpu,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,931,10655.22,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_cpu_3,checkoutservice,recommendationservice,recommendationservice,cpu,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,13185.0,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_delay_1,checkoutservice,recommendationservice,recommendationservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2062,10853.63,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_delay_2,checkoutservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,12813.27,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_delay_3,checkoutservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,14548.98,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_disk_1,checkoutservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,12913.63,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_disk_2,checkoutservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,9730.01,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_disk_3,checkoutservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,10047.77,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_loss_1,checkoutservice,frontend,frontend,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,13034.12,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_loss_2,checkoutservice,unknown,unknown,loss,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,9858.85,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_loss_3,checkoutservice,recommendationservice,recommendationservice,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2061,9235.2,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_mem_1,checkoutservice,unknown,unknown,mem,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,10893.85,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_mem_2,checkoutservice,recommendationservice,recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,12145.16,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_mem_3,checkoutservice,unknown,unknown,mem,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,9413.93,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_socket_1,checkoutservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,11926.57,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_socket_2,checkoutservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,9136.99,TELEMETRY_RAG_LOCAL
+re2ob_checkoutservice_socket_3,checkoutservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2062,12474.93,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_cpu_1,currencyservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,12168.73,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_cpu_2,currencyservice,recommendationservice,recommendationservice,cpu,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.65,2062,9796.4,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_cpu_3,currencyservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,14188.15,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_delay_1,currencyservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,8858.28,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_delay_2,currencyservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,6699.58,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_delay_3,currencyservice,recommendationservice,recommendationservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,7030.52,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_disk_1,currencyservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,836,8238.18,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_disk_2,currencyservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,7830.81,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_disk_3,currencyservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,10603.38,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_loss_1,currencyservice,currencyservice,currencyservice;frontend,loss,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.85,2061,8169.69,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_loss_2,currencyservice,currencyservice,currencyservice;frontend,loss,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,625,7352.79,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_loss_3,currencyservice,unknown,unknown,loss,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,10950.5,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_mem_1,currencyservice,unknown,unknown,mem,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,43,7960.86,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_mem_2,currencyservice,frontend,frontend,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,1763,8087.69,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_mem_3,currencyservice,frontend,frontend,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,7963.21,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_socket_1,currencyservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,854,8183.65,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_socket_2,currencyservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,8198.34,TELEMETRY_RAG_LOCAL
+re2ob_currencyservice_socket_3,currencyservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,854,8609.96,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_cpu_1,emailservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,7998.91,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_cpu_2,emailservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8261.7,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_cpu_3,emailservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8339.1,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_delay_1,emailservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8189.61,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_delay_2,emailservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8336.72,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_delay_3,emailservice,recommendationservice,recommendationservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,8939.81,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_disk_1,emailservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,7846.61,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_disk_2,emailservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8375.78,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_disk_3,emailservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8282.29,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_loss_1,emailservice,recommendationservice,recommendationservice,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,8113.38,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_loss_2,emailservice,recommendationservice,recommendationservice,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,8126.86,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_loss_3,emailservice,emailservice,emailservice;checkoutservice,loss,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,1032,8500.79,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_mem_1,emailservice,recommendationservice,recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,1659,8483.7,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_mem_2,emailservice,unknown,unknown,mem,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8343.2,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_mem_3,emailservice,recommendationservice,recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,866,8364.06,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_socket_1,emailservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,41,8128.49,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_socket_2,emailservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.55,1643,8336.79,TELEMETRY_RAG_LOCAL
+re2ob_emailservice_socket_3,emailservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2062,8091.61,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_cpu_1,productcatalogservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8481.55,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_cpu_2,productcatalogservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8560.91,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_cpu_3,productcatalogservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8134.63,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_delay_1,productcatalogservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,7912.52,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_delay_2,productcatalogservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,7910.18,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_delay_3,productcatalogservice,recommendationservice,recommendationservice,delay,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,7722.26,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_disk_1,productcatalogservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,8061.05,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_disk_2,productcatalogservice,unknown,unknown,disk,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8166.29,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_disk_3,productcatalogservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,8749.94,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_loss_1,productcatalogservice,frontend,frontend,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2061,6774.2,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_loss_2,productcatalogservice,frontend,frontend,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,6988.28,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_loss_3,productcatalogservice,productcatalogservice,productcatalogservice,loss,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,122,7431.81,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_mem_1,productcatalogservice,frontend,frontend;recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,7433.09,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_mem_2,productcatalogservice,frontend,frontend,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,1517,7860.84,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_mem_3,productcatalogservice,frontend,frontend,mem,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,1881,7657.73,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_socket_1,productcatalogservice,recommendationservice,recommendationservice,socket,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.75,2061,8065.18,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_socket_2,productcatalogservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8081.23,TELEMETRY_RAG_LOCAL
+re2ob_productcatalogservice_socket_3,productcatalogservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8260.97,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_cpu_1,recommendationservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8084.38,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_cpu_2,recommendationservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8394.36,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_cpu_3,recommendationservice,unknown,unknown,cpu,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8526.14,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_delay_1,recommendationservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8275.39,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_delay_2,recommendationservice,unknown,unknown,delay,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8090.49,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_delay_3,recommendationservice,recommendationservice,recommendationservice,delay,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.85,2062,8372.15,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_disk_1,recommendationservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.85,2062,8020.67,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_disk_2,recommendationservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.65,2062,8422.27,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_disk_3,recommendationservice,recommendationservice,recommendationservice,disk,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,855,8405.84,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_loss_1,recommendationservice,frontend,frontend,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,7327.66,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_loss_2,recommendationservice,frontend,frontend,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,8042.28,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_loss_3,recommendationservice,frontend,frontend,loss,CODE_BUG: Application Exception / Logic Error,False,False,0.0,False,0.85,2062,7993.98,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_mem_1,recommendationservice,unknown,unknown,mem,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,7949.51,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_mem_2,recommendationservice,unknown,unknown,mem,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8083.82,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_mem_3,recommendationservice,recommendationservice,recommendationservice,mem,CODE_BUG: Application Exception / Logic Error,True,True,1.0,False,0.55,859,8294.65,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_socket_1,recommendationservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8310.82,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_socket_2,recommendationservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8277.19,TELEMETRY_RAG_LOCAL
+re2ob_recommendationservice_socket_3,recommendationservice,unknown,unknown,socket,EC-4: Silent Data Corruption,False,False,0.0,False,0.5,42,8236.57,TELEMETRY_RAG_LOCAL

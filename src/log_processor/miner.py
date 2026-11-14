@@ -9,10 +9,9 @@ Academic fidelity to LogSage (arXiv:2506.03691):
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
-
 
 DEFAULT_CONFIG_PATH = "config/drain3.ini"
 DEFAULT_BASELINES_DIR = "data/baselines"
@@ -32,9 +31,9 @@ class DrainBaselineMiner:
 
         self.miner = TemplateMiner(config=self.miner_config)
         # Set of baseline template strings mined from x=3 successful runs
-        self.baseline_templates: Set[str] = set()
+        self.baseline_templates: set[str] = set()
 
-    def train_on_lines(self, lines: List[str]) -> Set[str]:
+    def train_on_lines(self, lines: list[str]) -> set[str]:
         """Ingests log lines and registers their template clusters."""
         new_templates = set()
         for line in lines:
@@ -47,13 +46,13 @@ class DrainBaselineMiner:
                 new_templates.add(template)
         return new_templates
 
-    def train_baseline_from_runs(self, run_telemetries: List[Dict[str, List[str]]]) -> Set[str]:
+    def train_baseline_from_runs(self, run_telemetries: list[dict[str, list[str]]]) -> set[str]:
         """
         Trains baseline template clusters on x=3 success runs.
         run_telemetries is a list of {service_name: [log_lines]} dictionaries.
         """
         for run_logs in run_telemetries:
-            for service, lines in run_logs.items():
+            for lines in run_logs.values():
                 self.train_on_lines(lines)
 
         # Record all cluster templates currently in the miner as baseline templates
@@ -67,7 +66,7 @@ class DrainBaselineMiner:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         data = {
             "total_templates": len(self.baseline_templates),
-            "templates": sorted(list(self.baseline_templates)),
+            "templates": sorted(self.baseline_templates),
         }
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -84,7 +83,7 @@ class DrainBaselineMiner:
                 self.miner.add_log_message(template)
         return True
 
-    def classify_line(self, line: str) -> Tuple[str, bool]:
+    def classify_line(self, line: str) -> tuple[str, bool]:
         """
         Classifies a single log line using Drain3.
         Returns:

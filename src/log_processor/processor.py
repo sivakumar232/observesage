@@ -32,13 +32,13 @@ class LogSageProcessor:
     def __init__(
         self,
         config_path: str = "config/drain3.ini",
-        m_before: int = 3,
-        n_after: int = 7,
-        max_log_tokens: int = 1500,
+        m_before: int | None = None,
+        n_after: int | None = None,
+        max_log_tokens: int | None = None,
     ):
-        self.m_before = m_before
-        self.n_after = n_after
-        self.max_log_tokens = max_log_tokens
+        self.m_before = int(os.getenv("LOGSAGE_CONTEXT_BEFORE_M", "3")) if m_before is None else m_before
+        self.n_after = int(os.getenv("LOGSAGE_CONTEXT_AFTER_N", "7")) if n_after is None else n_after
+        self.max_log_tokens = int(os.getenv("LOGSAGE_MAX_TOKEN_BUDGET", "1500")) if max_log_tokens is None else max_log_tokens
         self.miner = DrainBaselineMiner(config_path=config_path)
         self.is_baseline_ready = False
 
@@ -46,11 +46,12 @@ class LogSageProcessor:
         self,
         baseline_dir: str = "data/runs/success",
         cache_file: str = "data/baselines/drain3_baseline_templates.json",
-        x_runs: int = 3,
+        x_runs: int | None = None,
     ) -> bool:
         """
         Attempts to load cached baseline templates, or trains on x=3 success runs.
         """
+        actual_x_runs = int(os.getenv("LOGSAGE_SUCCESS_HISTORY_COUNT", "3")) if x_runs is None else x_runs
         if self.miner.load_baselines(cache_file) and len(self.miner.baseline_templates) > 0:
             self.is_baseline_ready = True
             return True
@@ -62,8 +63,8 @@ class LogSageProcessor:
         if not run_files:
             return False
 
-        # Take up to x=3 recent runs
-        selected_files = run_files[:x_runs]
+        # Take up to x recent runs
+        selected_files = run_files[:actual_x_runs]
         runs_logs: list[dict[str, list[str]]] = []
 
         for fpath in selected_files:
@@ -101,6 +102,8 @@ class LogSageProcessor:
         templates: dict[int, str] = {}
         novelty_map: dict[int, bool] = {}
 
+        novel_templates_set: set[str] = set()
+
         for idx, line in enumerate(raw_lines):
             kw = matches_keyword(line)
             template, is_novel = self.miner.classify_line(line)
@@ -109,11 +112,15 @@ class LogSageProcessor:
             templates[idx] = template
             novelty_map[idx] = is_novel
 
+            if is_novel and template:
+                novel_templates_set.add(template)
+
             # LogSage retains lines that have error keywords OR are novel templates
             if kw is not None or is_novel:
                 error_indices.append(idx)
 
-        novel_count = sum(1 for is_novel in novelty_map.values() if is_novel)
+        # Count DISTINCT novel templates, not repeating log line occurrences
+        novel_count = len(novel_templates_set)
 
         if not error_indices:
             return LogEvidence(

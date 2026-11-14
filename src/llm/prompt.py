@@ -4,6 +4,7 @@ Strictly budgets prompt tokens under 2,500 BPE tokens using exact tokenizer.
 Supports 4-way ablation modes: logs-only, logs-metrics, logs-traces, fusion.
 """
 
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -93,7 +94,10 @@ def build_multimodal_prompt_with_breakdown(
     records actual final BPE token allocations for `traces`, `metrics`, `logs`, and `total`.
     """
     effective_budget = max(400, max_total_tokens - system_prompt_overhead)
-    sections: list[str] = [f"### Incident Reference ID: {run_id}"]
+    # Anonymize run_id to an opaque incident token to prevent ground-truth leakage
+    # (e.g., 're2ob_checkoutservice_cpu_1' contains root-cause service & fault type)
+    opaque_id = f"INC-{hashlib.sha256(run_id.encode('utf-8')).hexdigest()[:8].upper()}"
+    sections: list[str] = [f"### Incident Reference ID: {opaque_id}"]
     breakdown: dict[str, int] = {"traces": 0, "metrics": 0, "logs": 0, "total": 0}
 
     include_traces = mode in ["logs-traces", "fusion"] and trace_evidence is not None

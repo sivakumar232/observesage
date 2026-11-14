@@ -21,8 +21,10 @@ from pathlib import Path
 from typing import Any
 
 try:
+    import numpy as np
     import pandas as pd
 except ImportError:
+    np = None
     pd = None
 
 from src.schemas.telemetry import (
@@ -374,8 +376,25 @@ class RCAEvalAdapter:
                 df = df[mask]
                 ts_filtered = ts_seconds[mask]
 
-                # Stratified sample up to 10,000 spans preserving incident spans
-                if len(df) > 10000:
+                trace_id_col = detect_column(df.columns.tolist(), ["traceID", "trace_id", "id"])
+
+                # Stratified sampling by COMPLETE TRACES (preserves DAG integrity and avoids orphaned spans)
+                if trace_id_col and len(df) > 12000:
+                    inc_mask = ts_filtered >= inject_time
+                    inc_trace_ids = df[inc_mask][trace_id_col].dropna().unique()
+                    base_trace_ids = df[~inc_mask][trace_id_col].dropna().unique()
+
+                    # Target up to 500 incident traces and 300 baseline traces
+                    target_inc = min(len(inc_trace_ids), 500)
+                    target_base = min(len(base_trace_ids), 300)
+
+                    sampled_inc = np.random.default_rng(42).choice(inc_trace_ids, size=target_inc, replace=False) if target_inc > 0 else []
+                    sampled_base = np.random.default_rng(42).choice(base_trace_ids, size=target_base, replace=False) if target_base > 0 else []
+                    selected_trace_set = set(sampled_inc).union(set(sampled_base))
+
+                    df = df[df[trace_id_col].isin(selected_trace_set)]
+                elif not trace_id_col and len(df) > 10000:
+                    # Fallback if no traceID exists
                     inc_mask = ts_filtered >= inject_time
                     df_inc = df[inc_mask]
                     df_base = df[~inc_mask]
@@ -634,47 +653,51 @@ class RCAEvalAdapter:
                 self.cases_metadata = self.load_metadata_registry(parent_reg)
 
         # 1. Check loaded registry
+        res_gt: dict[str, Any] = {}
         if case_id in self.cases_metadata:
             meta = self.cases_metadata[case_id]
-            return {
+            res_gt = {
                 "case_id": case_id,
                 "ground_truth_service": meta.get("root_cause_service", meta.get("service", "")),
                 "ground_truth_fault_type": meta.get("fault", meta.get("fault_type", "")),
                 "benchmark": meta.get("system", meta.get("benchmark", "")),
                 "dataset": meta.get("dataset", ""),
             }
+        else:
+            # 2. Parse from folder name: e.g. re2ob_checkoutservice_cpu_1
+            parts = case_id.split("_")
+            gt_service = "unknown"
+            gt_fault = "unknown"
+            dataset = parts[0] if parts else "unknown"
+            benchmark = "unknown"
 
-        # 2. Parse from folder name: e.g. re2ob_checkoutservice_cpu_1 or RE2_online-boutique_cartservice_mem_1
-        parts = case_id.split("_")
-        gt_service = "unknown"
-        gt_fault = "unknown"
-        dataset = parts[0] if parts else "unknown"
-        benchmark = "unknown"
+            if len(parts) >= 4:
+                if parts[-1].isdigit() and len(parts) == 4:
+                    dataset = parts[0]
+                    gt_service = parts[1]
+                    gt_fault = parts[2].upper()
+                else:
+                    dataset = parts[0]
+                    benchmark = parts[1]
+                    gt_service = parts[2]
+                    gt_fault = parts[3].upper()
 
-        if len(parts) >= 4:
-            if parts[-1].isdigit() and len(parts) == 4:
-                # e.g., re2ob_checkoutservice_cpu_1
-                dataset = parts[0]
-                gt_service = parts[1]
-                gt_fault = parts[2].upper()
-            else:
-                # e.g., RE2_online-boutique_cartservice_mem_1
-                dataset = parts[0]
-                benchmark = parts[1]
-                gt_service = parts[2]
-                gt_fault = parts[3].upper()
-        elif len(parts) == 3:
-            benchmark = parts[0]
-            gt_service = parts[1]
-            gt_fault = parts[2].upper()
+            res_gt = {
+                "case_id": case_id,
+                "ground_truth_service": gt_service,
+                "ground_truth_fault_type": gt_fault,
+                "benchmark": benchmark,
+                "dataset": dataset,
+            }
 
-        return {
-            "case_id": case_id,
-            "ground_truth_service": gt_service,
-            "ground_truth_fault_type": gt_fault,
-            "benchmark": benchmark,
-            "dataset": dataset,
-        }
+        # Include inject_time if inject_time.txt exists
+        try:
+            inj = self.parse_inject_time(case_dir)
+            res_gt["inject_time"] = inj
+        except Exception:
+            res_gt["inject_time"] = None
+
+        return res_gt
 
     def convert_case(self, case_dir: str | Path) -> tuple[TelemetrySnapshot, dict[str, Any]]:
         """

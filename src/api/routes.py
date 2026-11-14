@@ -23,7 +23,9 @@ _FAULT_LABEL: dict[str, str] = {
     "mem": "Memory Pressure",
     "delay": "Network Delay",
     "loss": "Packet Loss",
+    "socket": "Socket Congestion",
     "socket-connection": "Socket Congestion",
+    "disk": "Disk I/O",
 }
 
 
@@ -137,10 +139,14 @@ def health(request: Request) -> dict[str, Any]:
     cases_root, results_dir = _get_paths(request)
     pipeline = ObservaSagePipeline(cases_root=cases_root, use_llm=False)
     cases = pipeline.discover_cases()
+    # Check how many cases have evaluation results
+    fusion_csv = results_dir / "ablation_fusion.csv"
+    evaluated_count = len(_load_csv_as_rows(fusion_csv)) if fusion_csv.exists() else 0
     return {
         "status": "ok",
         "version": "1.0.0",
         "cases_available": len(cases),
+        "evaluated_cases": evaluated_count,
         "results_dir": str(results_dir),
     }
 

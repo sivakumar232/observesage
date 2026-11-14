@@ -69,13 +69,16 @@ class FusionEngine:
         service_scores: dict[str, float] = defaultdict(float)
         signal_votes: dict[str, list[str]] = {"LOGS": [], "METRICS": [], "TRACES": []}
 
-        # 1. Base Score from Logs
+        # 1. Base Score from Logs (Capped per service to avoid high-volume bias)
         for svc, log_ev in log_evidences.items():
             if not log_ev.snippets:
                 continue
+            # Cap the impact of novel templates per service so a single chatty service
+            # cannot dominate the score purely by template count
+            capped_novel = min(log_ev.novel_templates_count, 10)
             score = (
                 len(log_ev.snippets) * self.log_snippet_weight
-                + log_ev.novel_templates_count * self.log_novel_weight
+                + capped_novel * self.log_novel_weight
             )
             service_scores[svc] += score
             signal_votes["LOGS"].append(svc)
@@ -154,8 +157,6 @@ class FusionEngine:
 
         # Trace evidence likelihood contribution
         leaf_depth = 0
-        # Trace evidence likelihood contribution
-        leaf_depth = 0
         if trace_evidence:
             if trace_evidence.culprit_span:
                 leaf_depth = trace_evidence.culprit_span.depth
@@ -163,7 +164,8 @@ class FusionEngine:
                 likelihoods[FailureCategory.EC_3_CASCADE] += 7.0 + min(4.0, leaf_depth * 1.5)
             elif trace_evidence.error_spans_count == 1:
                 likelihoods[FailureCategory.EC_3_CASCADE] += 3.0
-            elif trace_evidence.latency_bottlenecks_count > 0 or (trace_evidence.total_traces > 0 and not trace_evidence.error_spans_count):
+            elif trace_evidence.latency_bottlenecks_count > 0:
+                # Require explicit latency bottlenecks (never reward zero trace errors as latency)
                 likelihoods[FailureCategory.EC_2_LATENCY] += 4.0
 
         # Log evidence likelihood contribution
@@ -187,8 +189,10 @@ class FusionEngine:
         if max(likelihoods.values()) <= 0.2:
             failure_cat = FailureCategory.UNKNOWN
 
-        # 7. Dynamic Bayesian Consensus Confidence Calculation
-        # Signal-specific normalized certainty factors c_m in [0, 1]
+        # 7. Margin-Calibrated Diagnostic Confidence Calculation
+        # Combines modality agreement with candidate score margin:
+        # A prediction with close runner-ups has low margin -> lower confidence.
+        # A prediction backed by multiple modalities and large margin -> high confidence.
         c_metrics = min(0.95, max(0.40, max_metric_div / 8.0)) if (metric_evidence and metric_evidence.alerts) else 0.0
         has_trace_signal = bool(
             trace_evidence and (trace_evidence.error_spans_count > 0 or trace_evidence.latency_bottlenecks_count > 0)
@@ -209,13 +213,25 @@ class FusionEngine:
             active_certainties.append(c_logs)
             agreeing_signals += 1
 
-        # Bayesian independent probability combination: 1 - product(1 - c_m)
+        # Candidate score margin: (S_top - S_runner_up) / S_top
+        margin = 1.0
+        if len(ranked_candidates) >= 2:
+            s_top = service_scores.get(top_service, 0.0)
+            s_runner = service_scores.get(ranked_candidates[1], 0.0)
+            if s_top > 0:
+                margin = max(0.1, min(1.0, (s_top - s_runner) / s_top))
+            else:
+                margin = 0.2
+
         if active_certainties:
             prod_uncertainty = 1.0
             for c in active_certainties:
                 prod_uncertainty *= (1.0 - c)
-            raw_confidence = 1.0 - prod_uncertainty
-            confidence = max(0.55, min(0.98, round(raw_confidence, 2)))
+            evidence_support = 1.0 - prod_uncertainty
+            # Scale by score separation margin so tight ties don't falsely claim 98% confidence
+            calibrated_conf = evidence_support * (0.65 + 0.35 * margin)
+            # Minimum confidence floor when signals agree, capped at realistic bound
+            confidence = max(0.50, min(0.95, round(calibrated_conf, 2)))
         else:
             confidence = 0.50
 

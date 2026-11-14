@@ -28,6 +28,8 @@ Fault Scenarios by Edge Case Category:
 
 import argparse
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -41,6 +43,9 @@ console = Console()
 
 FLAGD_URL = "http://localhost:8013"
 FLAGD_CONFIG_PATH = "config/demo.flagd.json"
+
+_PROJECT_DIR_NAME = Path(__file__).resolve().parent.parent.name
+DOCKER_NETWORK = os.getenv("COMPOSE_PROJECT_NAME", _PROJECT_DIR_NAME) + "_observasage-net"
 
 # ──────────────────────────────────────────────
 #  All injectable fault scenarios
@@ -240,14 +245,14 @@ SCENARIOS: dict[str, dict] = {
         "description": "Disconnect cartservice from observasage-net → network partition, vague timeouts in logs",
         "method": "docker_net_disconnect",
         "target": "cartservice",
-        "network": "final_year_project_observasage-net",
+        "network": DOCKER_NETWORK,
     },
     "net_partition_payment": {
         "edge_case": "EC-5",
         "description": "Disconnect paymentservice from network → full infra-level partition",
         "method": "docker_net_disconnect",
         "target": "paymentservice",
-        "network": "final_year_project_observasage-net",
+        "network": DOCKER_NETWORK,
     },
 
     # ── UTIL: Clear / Restore ─────────────────────────────────────
@@ -383,7 +388,7 @@ def _clear_all(client: docker.DockerClient) -> None:
         "cartservice", "checkoutservice", "paymentservice", "currencyservice",
         "shippingservice", "emailservice", "redis-cart", "productcatalogservice", "frontend",
     ]
-    NETWORK = "final_year_project_observasage-net"
+    NETWORK = DOCKER_NETWORK
 
     console.print("\n[cyan]Restoring container resource limits...[/cyan]")
     for name in RESTORABLE:

@@ -185,7 +185,8 @@ def main():
                 stage_timings=[StageTiming(stage="evaluate", status="ok", duration_ms=round(duration_ms, 2))],
                 source="live",
             )
-            ObservaSagePipeline.save_artifact(artifact, args.output_csv.parent)
+            artifacts_dir = args.output_csv.parent if args.output_csv else Path("results")
+            ObservaSagePipeline.save_artifact(artifact, artifacts_dir)
 
             status_glyph = "[bold green]✔ HIT[/bold green]" if score.top1_hit else "[bold red]✘ MISS[/bold red]"
             console.print(

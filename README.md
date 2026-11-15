@@ -172,11 +172,18 @@ final_year_project/
 │   ├── llm/                        # Structured LLM Generation Layer
 │   │   ├── client.py               # GeminiRCAClient (schema validation, graceful Telemetry-RAG fallback)
 │   │   └── prompt.py               # Elastic dynamic token pool budgeting (<2500 tokens) with topology
+│   ├── db/                         # PostgreSQL JSONB Persistence Layer
+│   │   └── postgres_store.py       # DDL migration, artifact upsert, evaluation query store
+│   ├── api/                        # FastAPI Interactive Web Dashboard
+│   │   ├── app.py                  # API router mounting and CORS setup
+│   │   ├── routes.py               # REST endpoints for case inspection & ablation comparison
+│   │   ├── websocket.py            # Live diagnosis progress streaming
+│   │   └── static/index.html       # Clean multi-signal interactive frontend dashboard
 │   └── eval/                       # Academic Evaluation & Scoring
 │       ├── taxonomy.py             # Bidirectional mapping between RCAEval labels and FailureCategory
 │       └── metrics.py              # Top@1, Top@3, MRR calculation & transparent engine reporting
 │
-├── tests/                          # 38 Pytest unit & integration test suites
+├── tests/                          # 49 Pytest unit & integration test suites
 │   ├── test_metrics_processor.py   # Adaptive Z-score, MAD, memory slope, and cgroup TimeToOOM tests
 │   ├── test_trace_processor.py     # DAG reconstruction, dependency graph, and timeout inversion tests
 │   ├── test_fusion_and_prompt.py   # Topological causal propagation, Bayesian consensus, elastic token budget
@@ -184,71 +191,172 @@ final_year_project/
 │   ├── test_evaluation_harness.py  # Taxonomy mapping, Top@1/Top@3/MRR scoring tests
 │   ├── test_llm_client_and_analyze.py # LLM client resilience and pipeline integration tests
 │   ├── test_rcaeval_adapter.py     # Adapter slicing, timestamp parsing, and quantization tests
-│   └── test_schemas.py             # Telemetry and report schema serialization tests
+│   ├── test_schemas.py             # Telemetry and report schema serialization tests
+│   └── test_postgres_store.py      # PostgreSQL round-trip storage and JSONB query tests
 │
 ├── data/
 │   ├── runs/                       # Captured telemetry snapshots (failed/ and success/)
 │   ├── baselines/                  # Cached Drain3 baseline templates
 │   └── ground_truth/               # RCAEval benchmark case folders & ground-truth metadata
 │
-└── pyproject.toml                  # Python dependencies managed by uv
+└── pyproject.toml                  # Python project specification & dependencies
 ```
 
 ---
 
-## 5. How to Run (Step-by-Step Guide)
+## 5. How to Run (Step-by-Step Guide for Linux & Windows)
 
 ### 1. Prerequisites
-- Linux OS with Python 3.11+
-- [`uv`](https://docs.astral.sh/uv/) package manager:
-  ```bash
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
+
+#### **Linux (Ubuntu / Debian / Fedora / Arch)**
+- Python 3.11+ (`python3 --version`)
+- Docker Engine & Docker Compose plugin (`docker compose version`)
+- Git (`git --version`)
+
+#### **Windows (Windows 10 / 11)**
+- Python 3.11+ installed from [python.org](https://www.python.org/) (*make sure **"Add Python to PATH"** is checked during installation*)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with WSL 2 backend enabled
+- Git for Windows installed
+
+---
 
 ### 2. Environment Setup
+
+#### **On Linux:**
 ```bash
 git clone https://github.com/sivakumar232/observesage.git
 cd observesage
-git checkout track1
-uv sync
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-Configure your Gemini API key:
-```bash
-cp .env.example .env
-# Edit .env and set GEMINI_API_KEY=your_key_here
+#### **On Windows (PowerShell):**
+```powershell
+git clone https://github.com/sivakumar232/observesage.git
+cd observesage
+
+# Create and activate virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+# Note: If PowerShell displays a script execution policy error, run:
+# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### 3. Run the Complete Test Suite
-Verify that all 38 tests pass:
-```bash
-uv run pytest tests/ -v
+#### **Configure Environment Variables:**
+Copy the template configuration file:
+- **Linux:** `cp .env.example .env`
+- **Windows:** `copy .env.example .env`
+
+Edit `.env` to configure settings:
+```env
+# PostgreSQL connection (matches Docker Compose port 5433)
+DATABASE_URL=postgresql://observasage:observasage_secret@localhost:5433/observasage
+
+# Gemini API Key (optional for local Telemetry-RAG, required for live LLM inference)
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ---
 
-### 4. Convert RCAEval Cases to TelemetrySnapshots
-To convert a single RCAEval case folder into a standardized `TelemetrySnapshot`:
+### 3. Start Local PostgreSQL via Docker
+
+ObservaSage stores all evaluation scores and rich JSONB diagnostic artifacts directly in PostgreSQL. To avoid port conflicts with existing PostgreSQL instances on port 5432, ObservaSage maps to port **5433** on the host.
+
+Run from the project root:
 ```bash
-uv run python scripts/rcaeval_adapter.py --case-dir data/ground_truth/rcaeval/RE2/RE2_online-boutique_cartservice_mem_1
+docker compose up -d postgres
 ```
 
-To batch-convert an entire directory of cases:
+Verify that the container is healthy:
 ```bash
-uv run python scripts/rcaeval_adapter.py --cases-root data/ground_truth/rcaeval/RE2 --output-dir data/runs/failed
+docker compose ps
 ```
-
-This creates:
-* `data/runs/failed/<case_id>_telemetry.json` (Validated `TelemetrySnapshot`)
-* `data/runs/failed/<case_id>_ground_truth.json` (Ground truth labels)
+*Expected status:* `observasage-postgres` is `Up (healthy)` on port `0.0.0.0:5433->5432/tcp`.
 
 ---
 
-### 5. Diagnose an Incident via CLI (`analyze.py`)
-Run automated multi-signal diagnosis on any telemetry snapshot:
-```bash
-uv run python scripts/analyze.py --telemetry-file data/runs/failed/RE2_online-boutique_cartservice_mem_1_telemetry.json --mode fusion
-```
+### 4. Migrate Benchmark Evaluation Data to PostgreSQL
+
+Populate PostgreSQL with all precomputed evaluation runs and artifacts (362 cases across `fusion`, `logs-metrics`, `logs-traces`, `logs-only`):
+
+- **Linux:**
+  ```bash
+  python scripts/migrate_to_postgres.py
+  ```
+- **Windows:**
+  ```powershell
+  python scripts\migrate_to_postgres.py
+  ```
+
+This initializes the `evaluation_results` table, secondary indexes on `(mode, case_id)`, and imports the ablation benchmark datasets.
+
+---
+
+### 5. Run the Test Suite
+
+Execute the full suite of unit, integration, and regression tests:
+
+- **Linux:**
+  ```bash
+  pytest tests/ -v
+  ```
+- **Windows:**
+  ```powershell
+  pytest tests\ -v
+  ```
+
+---
+
+### 6. Launch the Interactive Web Dashboard
+
+Start the FastAPI application and modern dark-mode frontend:
+
+- **Linux:**
+  ```bash
+  uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+  ```
+- **Windows:**
+  ```powershell
+  python -m uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+  ```
+
+Open your browser to: **`http://localhost:8000`**
+
+#### **Dashboard Features:**
+1. **Interactive Case Browser:** Filter across all 239 benchmark cases by test suite (`RE2-OB`, `RE2-TT`, `RE3-OB`, `RE3-TT`) or fault type (`cpu`, `mem`, `delay`, `loss`, `disk`, `socket`).
+2. **Ground Truth vs. Predicted Comparison:** Immediate side-by-side verdict showing predicted vs actual culprit service, top-k ranking, failure category, and confidence score.
+3. **Multi-Signal Triangulation Deep Dive:**
+   - **Overview / Signals:** At-a-glance summary of metric alerts, trace culprits, and novel log templates.
+   - **Traces & DAG:** Interactive visual call-graph DAG showing caller-callee topology, latency bottlenecks, and leaf-culprit attribution.
+   - **Metrics:** Z-scores, MAD, memory slope ($dM/dt$), and cgroup Time-to-OOM calculations.
+   - **Logs:** Drain3 template clustering, baseline diffing against success runs, and dynamic stack trace extensions.
+   - **LLM Prompt:** Exact token-budgeted prompt delivered to Gemini with per-signal budget allocation breakdown.
+   - **LLM Response & Original RCA:** Complete LLM reasoning, generated remediation steps, and side-by-side comparison with original ground truth.
+4. **Live Diagnosis Runner:** Re-run any incident case live across any modality (`fusion`, `logs-only`, `logs-metrics`, `logs-traces`) with real-time websocket progress.
+
+---
+
+### 7. Run CLI Incident Diagnosis (`analyze.py`)
+
+To diagnose any individual telemetry snapshot directly in the terminal:
+
+- **Linux:**
+  ```bash
+  python scripts/analyze.py --telemetry-file data/runs/failed/RE2_online-boutique_cartservice_mem_1_telemetry.json --mode fusion
+  ```
+- **Windows:**
+  ```powershell
+  python scripts\analyze.py --telemetry-file data\runs\failed\RE2_online-boutique_cartservice_mem_1_telemetry.json --mode fusion
+  ```
 
 Supported ablation modes:
 * `--mode fusion`: Full multi-signal triangulation (ObservaSage).
@@ -278,22 +386,24 @@ Prompt Tokens Used     │ 1,847 tokens
 
 ---
 
-### 6. Run Automated Evaluation & Ablation Study (`evaluate_rcaeval.py`)
+### 8. Run Automated Evaluation & Ablation Study (`evaluate_rcaeval.py`)
+
 Run benchmark evaluations to compute Top@1, Top@3, and MRR across test cases:
 
-```bash
-# Configuration A: LogSage Baseline (Logs Only)
-uv run python scripts/evaluate_rcaeval.py --mode logs-only --output-csv results/ablation_logs.csv
+- **Linux / Windows:**
+  ```bash
+  # Mode A: LogSage Baseline (Logs Only)
+  python scripts/evaluate_rcaeval.py --mode logs-only --output-csv results/ablation_logs.csv
 
-# Configuration B: Logs + Metrics
-uv run python scripts/evaluate_rcaeval.py --mode logs-metrics --output-csv results/ablation_metrics.csv
+  # Mode B: Logs + Metrics
+  python scripts/evaluate_rcaeval.py --mode logs-metrics --output-csv results/ablation_metrics.csv
 
-# Configuration C: Logs + Traces
-uv run python scripts/evaluate_rcaeval.py --mode logs-traces --output-csv results/ablation_traces.csv
+  # Mode C: Logs + Traces
+  python scripts/evaluate_rcaeval.py --mode logs-traces --output-csv results/ablation_traces.csv
 
-# Configuration D: ObservaSage Full Fusion
-uv run python scripts/evaluate_rcaeval.py --mode fusion --output-csv results/ablation_fusion.csv
-```
+  # Mode D: ObservaSage Full Tri-Modal Fusion
+  python scripts/evaluate_rcaeval.py --mode fusion --output-csv results/ablation_fusion.csv
+  ```
 
 **CLI Flags:**
 * `--limit 10`: Limits evaluation to the first 10 cases (ideal for dry runs).

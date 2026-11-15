@@ -239,6 +239,32 @@ services:
     networks:
       - observasage-net
 
+  # -------------------------------------------------------------
+  # ObservaSage Persistent Results & Artifacts Database
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: observasage-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: observasage
+      POSTGRES_PASSWORD: observasage_secret
+      POSTGRES_DB: observasage
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - observasage-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observasage -d observasage"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+
 networks:
   observasage-net:
     driver: bridge

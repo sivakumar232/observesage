@@ -12,11 +12,13 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from src.db.postgres_store import PostgresStore
 from src.eval.metrics import aggregate_scores
 from src.pipeline.orchestrator import ALL_MODES, AblationMode, ObservaSagePipeline
 from src.schemas import CaseAnalysisArtifact, classify_error_bucket
 
 router = APIRouter(prefix="/api", tags=["ObservaSage"])
+_db_store = PostgresStore()
 
 _FAULT_LABEL: dict[str, str] = {
     "cpu": "CPU Stress",
@@ -239,6 +241,14 @@ def get_case_analysis(
     case_dir = _resolve_case_dir(cases_root, case_id)
 
     if not recompute:
+        # Check PostgreSQL first, then disk cache
+        try:
+            db_art = _db_store.load_artifact(case_id, mode)
+            if db_art is not None:
+                return {"found": True, **artifact_to_api_payload(db_art)}
+        except Exception:
+            pass
+
         artifact = ObservaSagePipeline.load_artifact(results_dir, case_id, mode)
         if artifact is not None:
             return {"found": True, **artifact_to_api_payload(artifact)}
@@ -266,6 +276,10 @@ def get_case_analysis(
     pipeline = ObservaSagePipeline(cases_root=cases_root, use_llm=use_llm)
     _, _, artifact = pipeline.run_case_full(case_dir=case_dir, mode=mode)
     pipeline.save_artifact(artifact, results_dir)
+    try:
+        _db_store.save_artifact(artifact)
+    except Exception:
+        pass
     return {"found": True, **artifact_to_api_payload(artifact)}
 
 

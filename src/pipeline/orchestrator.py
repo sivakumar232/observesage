@@ -316,7 +316,7 @@ class ObservaSagePipeline:
 
     @classmethod
     def save_artifact(cls, artifact: CaseAnalysisArtifact, output_dir: Path | str) -> Path:
-        """Persists a CaseAnalysisArtifact atomically via temp file + os.replace."""
+        """Persists a CaseAnalysisArtifact atomically via temp file + os.replace, and syncs to PostgreSQL."""
         path = cls.artifact_path(output_dir, artifact.case_id, artifact.mode)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = artifact.model_dump_json(indent=2)
@@ -326,6 +326,14 @@ class ObservaSagePipeline:
             tmp.write(payload)
             tmp_path = Path(tmp.name)
         os.replace(tmp_path, path)
+
+        # Sync to PostgreSQL if available
+        try:
+            from src.db.postgres_store import PostgresStore
+            PostgresStore().save_artifact(artifact)
+        except Exception as e:
+            _logger.debug("PostgreSQL sync bypassed: %s", e)
+
         return path
 
     @classmethod
